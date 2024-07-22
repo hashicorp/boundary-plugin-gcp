@@ -81,7 +81,7 @@ $ boundary targets add-host-sources -id $TARGET_ID -host-source $HOST_SET_ID
 
 You will need to build your own Boundary binary, as Boundary imports the plugins as a dependency.
 
-As a reference, you can review [this fork](https://github.com/joatmon08/boundary/tree/google-plugin) for changes.
+As a reference, you can review [this fork](https://github.com/joatmon08/boundary) for changes.
 
 To build the fork, go into the repository.
 

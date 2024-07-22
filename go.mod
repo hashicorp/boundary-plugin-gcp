@@ -1,4 +1,4 @@
-module github.com/joatmon08/boundary-plugin-google
+module github.com/hashicorp/boundary-plugin-google
 
 go 1.21
 

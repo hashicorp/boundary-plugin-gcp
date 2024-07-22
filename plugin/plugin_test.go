@@ -13,7 +13,7 @@ import (
 	"github.com/hashicorp/boundary/sdk/pbs/controller/api/resources/hostsets"
 	pb "github.com/hashicorp/boundary/sdk/pbs/plugin"
 	"github.com/hashicorp/go-secure-stdlib/parseutil"
-	cred "github.com/joatmon08/boundary-plugin-google/internal/credential"
+	cred "github.com/hashicorp/boundary-plugin-google/internal/credential"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/types/known/structpb"
 )

@@ -7,9 +7,9 @@ import (
 	"fmt"
 
 	computepb "cloud.google.com/go/compute/apiv1/computepb"
-	cred "github.com/joatmon08/boundary-plugin-google/internal/credential"
-	"github.com/joatmon08/boundary-plugin-google/internal/errors"
-	"github.com/joatmon08/boundary-plugin-google/internal/values"
+	cred "github.com/hashicorp/boundary-plugin-google/internal/credential"
+	"github.com/hashicorp/boundary-plugin-google/internal/errors"
+	"github.com/hashicorp/boundary-plugin-google/internal/values"
 	"github.com/mitchellh/mapstructure"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
