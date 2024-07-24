@@ -9,11 +9,11 @@ import (
 	"path/filepath"
 	"testing"
 
+	cred "github.com/hashicorp/boundary-plugin-google/internal/credential"
 	"github.com/hashicorp/boundary/sdk/pbs/controller/api/resources/hostcatalogs"
 	"github.com/hashicorp/boundary/sdk/pbs/controller/api/resources/hostsets"
 	pb "github.com/hashicorp/boundary/sdk/pbs/plugin"
 	"github.com/hashicorp/go-secure-stdlib/parseutil"
-	cred "github.com/hashicorp/boundary-plugin-google/internal/credential"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/types/known/structpb"
 )
@@ -26,6 +26,7 @@ func wrapMap(t *testing.T, in map[string]interface{}) *structpb.Struct {
 }
 
 func TestListHosts(t *testing.T) {
+	t.Skip("TODO: this needs a secrets file to run - maybe only manually?")
 	ctx := context.Background()
 	p := &GooglePlugin{}
 
@@ -294,6 +295,7 @@ func TestListHosts(t *testing.T) {
 }
 
 func TestCreateCatalog(t *testing.T) {
+	t.Skip("TODO: this needs a secrets file to run - maybe only manually?")
 	ctx := context.Background()
 	p := &GooglePlugin{}
 
@@ -374,6 +376,7 @@ func TestCreateCatalog(t *testing.T) {
 }
 
 func TestUpdateCatalog(t *testing.T) {
+	t.Skip("TODO: this needs a secrets file to run - maybe only manually?")
 	ctx := context.Background()
 	p := &GooglePlugin{}
 
