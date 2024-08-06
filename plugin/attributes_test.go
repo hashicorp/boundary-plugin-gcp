@@ -6,6 +6,7 @@ package plugin
 import (
 	"testing"
 
+	cred "github.com/hashicorp/boundary-plugin-google/internal/credential"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -37,6 +38,19 @@ func TestGetCatalogAttributes(t *testing.T) {
 				},
 			},
 			expectedErrContains: "attributes.bar: unrecognized field, attributes.foo: unrecognized field",
+		},
+		{
+			name: "valid project and zone",
+			in: &structpb.Struct{
+				Fields: map[string]*structpb.Value{
+					"project": structpb.NewStringValue("test-12345"),
+					"zone":    structpb.NewStringValue("us-central-1a"),
+				},
+			},
+			expected: &CatalogAttributes{&cred.CredentialAttributes{
+				Project: "test-12345",
+				Zone:    "us-central-1a",
+			}},
 		},
 	}
 
@@ -73,7 +87,7 @@ func TestGetSetAttributes(t *testing.T) {
 			expected: &SetAttributes{},
 		},
 		{
-			name: "example filter",
+			name: "valid example filter",
 			in: map[string]any{
 				ConstListInstancesFilter: "tags.items=my-tag AND -tags.items=my-other-tag) OR tags.items=alternative-tag",
 			},
@@ -82,7 +96,7 @@ func TestGetSetAttributes(t *testing.T) {
 			},
 		},
 		{
-			name: "example instance group",
+			name: "valid example instance group",
 			in: map[string]any{
 				ConstInstanceGroup: "test",
 			},
@@ -97,6 +111,14 @@ func TestGetSetAttributes(t *testing.T) {
 				"bar": true,
 			},
 			expectedErrContains: "attributes.bar: unrecognized field, attributes.foo: unrecognized field",
+		},
+		{
+			name: "invalid, cannot have both instance filter and group defined",
+			in: map[string]any{
+				ConstListInstancesFilter: "test",
+				ConstInstanceGroup:       "test",
+			},
+			expectedErrContains: "Error in the attributes provided, cannot define both filter and instance group",
 		},
 	}
 

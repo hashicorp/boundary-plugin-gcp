@@ -16,6 +16,7 @@ import (
 	"google.golang.org/protobuf/types/known/structpb"
 )
 
+// CatalogAttributes defines a set of attributes for the host catalog
 type CatalogAttributes struct {
 	*cred.CredentialAttributes
 }
@@ -51,6 +52,7 @@ func getCatalogAttributes(in *structpb.Struct) (*CatalogAttributes, error) {
 	}, nil
 }
 
+// SetAttributes defines attributes fro the host set
 type SetAttributes struct {
 	Filter        string `mapstructure:"filter"`
 	InstanceGroup string `mapstructure:"instance_group"`
@@ -61,6 +63,12 @@ func getSetAttributes(in *structpb.Struct) (*SetAttributes, error) {
 
 	badFields := make(map[string]string)
 	unknownFields := values.StructFields(in)
+
+	if _, filter := unknownFields[ConstListInstancesFilter]; filter {
+		if _, ig := unknownFields[ConstInstanceGroup]; ig {
+			return nil, errors.InvalidArgumentError("Error in the attributes provided, cannot define both filter and instance group", nil)
+		}
+	}
 
 	delete(unknownFields, ConstListInstancesFilter)
 	delete(unknownFields, ConstInstanceGroup)
@@ -82,6 +90,7 @@ func getSetAttributes(in *structpb.Struct) (*SetAttributes, error) {
 			inMap[ConstListInstancesFilter] = string(filterVal)
 		}
 	}
+
 	if instanceGroupRaw, ok := inMap[ConstInstanceGroup]; ok {
 		switch instanceGroupValue := instanceGroupRaw.(type) {
 		case string:

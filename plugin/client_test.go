@@ -18,6 +18,7 @@ func TestInstanceToHost(t *testing.T) {
 	examplePublicIp := "1.1.1.1"
 	examplePublicIp2 := "1.1.1.2"
 	exampleIPv6 := "some::fake::address"
+	exampleName := "test-instance"
 
 	cases := []struct {
 		name        string
@@ -26,14 +27,24 @@ func TestInstanceToHost(t *testing.T) {
 		expectedErr string
 	}{
 		{
-			name:        "missing instance self-link",
-			instance:    &computepb.Instance{},
+			name: "missing instance self-link",
+			instance: &computepb.Instance{
+				Name: &exampleName,
+			},
 			expectedErr: "response integrity error: missing instance self-link",
+		},
+		{
+			name: "missing instance name",
+			instance: &computepb.Instance{
+				SelfLink: &exampleId,
+			},
+			expectedErr: "response integrity error: missing instance name",
 		},
 		{
 			name: "good, single private IP with public IP address",
 			instance: &computepb.Instance{
 				SelfLink: &exampleId,
+				Name:     &exampleName,
 				NetworkInterfaces: []*computepb.NetworkInterface{
 					{
 						NetworkIP: &examplePrivateIp,
@@ -46,14 +57,16 @@ func TestInstanceToHost(t *testing.T) {
 				},
 			},
 			expected: &pb.ListHostsResponseHost{
-				ExternalId:  exampleId,
-				IpAddresses: []string{examplePrivateIp, examplePublicIp},
+				ExternalId:   exampleId,
+				ExternalName: exampleName,
+				IpAddresses:  []string{examplePrivateIp, examplePublicIp},
 			},
 		},
 		{
 			name: "good, single private IP address",
 			instance: &computepb.Instance{
 				SelfLink: &exampleId,
+				Name:     &exampleName,
 				NetworkInterfaces: []*computepb.NetworkInterface{
 					{
 						NetworkIP:     &examplePrivateIp,
@@ -62,14 +75,16 @@ func TestInstanceToHost(t *testing.T) {
 				},
 			},
 			expected: &pb.ListHostsResponseHost{
-				ExternalId:  exampleId,
-				IpAddresses: []string{examplePrivateIp},
+				ExternalId:   exampleId,
+				ExternalName: exampleName,
+				IpAddresses:  []string{examplePrivateIp},
 			},
 		},
 		{
 			name: "good, multiple interfaces",
 			instance: &computepb.Instance{
 				SelfLink: &exampleId,
+				Name:     &exampleName,
 				NetworkInterfaces: []*computepb.NetworkInterface{
 					{
 						NetworkIP: &examplePrivateIp,
@@ -90,14 +105,16 @@ func TestInstanceToHost(t *testing.T) {
 				},
 			},
 			expected: &pb.ListHostsResponseHost{
-				ExternalId:  exampleId,
-				IpAddresses: []string{examplePrivateIp, examplePublicIp, examplePrivateIp2, examplePublicIp2},
+				ExternalId:   exampleId,
+				ExternalName: exampleName,
+				IpAddresses:  []string{examplePrivateIp, examplePublicIp, examplePrivateIp2, examplePublicIp2},
 			},
 		},
 		{
 			name: "good, single private IP address with IPv6",
 			instance: &computepb.Instance{
 				SelfLink: &exampleId,
+				Name:     &exampleName,
 				NetworkInterfaces: []*computepb.NetworkInterface{
 					{
 						NetworkIP:     &examplePrivateIp,
@@ -107,8 +124,9 @@ func TestInstanceToHost(t *testing.T) {
 				},
 			},
 			expected: &pb.ListHostsResponseHost{
-				ExternalId:  exampleId,
-				IpAddresses: []string{examplePrivateIp, exampleIPv6},
+				ExternalId:   exampleId,
+				ExternalName: exampleName,
+				IpAddresses:  []string{examplePrivateIp, exampleIPv6},
 			},
 		},
 	}

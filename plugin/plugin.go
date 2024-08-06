@@ -17,6 +17,8 @@ import (
 	"google.golang.org/grpc/status"
 )
 
+// GooglePlugin implements the GooglePluginServiceServer interface for the
+// Google host service plugin.
 type GooglePlugin struct {
 	pb.UnimplementedHostPluginServiceServer
 }
@@ -25,6 +27,7 @@ var (
 	_ pb.HostPluginServiceServer = (*GooglePlugin)(nil)
 )
 
+// OnCreateCatalog is called when a dynamic host catalog is created.
 func (p *GooglePlugin) OnCreateCatalog(_ context.Context, req *pb.OnCreateCatalogRequest) (*pb.OnCreateCatalogResponse, error) {
 	catalog := req.GetCatalog()
 	if catalog == nil {
@@ -47,6 +50,7 @@ func (p *GooglePlugin) OnCreateCatalog(_ context.Context, req *pb.OnCreateCatalo
 	}, nil
 }
 
+// OnUpdateCatalog is called when a dynamic host catalog is updated.
 func (p *GooglePlugin) OnUpdateCatalog(_ context.Context, req *pb.OnUpdateCatalogRequest) (*pb.OnUpdateCatalogResponse, error) {
 	currentCatalog := req.GetCurrentCatalog()
 	if currentCatalog == nil {
@@ -67,6 +71,7 @@ func (p *GooglePlugin) OnUpdateCatalog(_ context.Context, req *pb.OnUpdateCatalo
 	}, nil
 }
 
+// OnDeleteCatalog is called when a dynamic host catalog is deleted.
 func (p *GooglePlugin) OnDeleteCatalog(ctx context.Context, req *pb.OnDeleteCatalogRequest) (*pb.OnDeleteCatalogResponse, error) {
 	catalog := req.GetCatalog()
 	if catalog == nil {
@@ -85,6 +90,7 @@ func (p *GooglePlugin) OnDeleteCatalog(ctx context.Context, req *pb.OnDeleteCata
 	return &pb.OnDeleteCatalogResponse{}, nil
 }
 
+// OnCreateSet is called when a dynamic host set is created.
 func (p *GooglePlugin) OnCreateSet(_ context.Context, req *pb.OnCreateSetRequest) (*pb.OnCreateSetResponse, error) {
 	if err := validateSet(req.GetSet()); err != nil {
 		return nil, err
@@ -92,6 +98,7 @@ func (p *GooglePlugin) OnCreateSet(_ context.Context, req *pb.OnCreateSetRequest
 	return &pb.OnCreateSetResponse{}, nil
 }
 
+// OnUpdateSet is called when a dynamic host set is updated.
 func (p *GooglePlugin) OnUpdateSet(_ context.Context, req *pb.OnUpdateSetRequest) (*pb.OnUpdateSetResponse, error) {
 	if err := validateSet(req.GetNewSet()); err != nil {
 		return nil, err
@@ -104,6 +111,7 @@ func (p *GooglePlugin) OnDeleteSet(ctx context.Context, req *pb.OnDeleteSetReque
 	return &pb.OnDeleteSetResponse{}, nil
 }
 
+// ListHosts returns the list of instances based on filter or instance group name.
 func (p *GooglePlugin) ListHosts(ctx context.Context, req *pb.ListHostsRequest) (*pb.ListHostsResponse, error) {
 	catalog := req.GetCatalog()
 	if catalog == nil {

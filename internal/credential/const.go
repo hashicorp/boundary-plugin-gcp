@@ -4,11 +4,9 @@
 package credential
 
 const (
+	// ConstProject defines the attribute name for a Google Cloud project
 	ConstProject = "project"
-	ConstZone    = "zone"
-)
 
-var AllowedCatalogFields = map[string]struct{}{
-	ConstProject: {},
-	ConstZone:    {},
-}
+	// ConstZone defines the attribute name for a Google Cloud zone
+	ConstZone = "zone"
+)

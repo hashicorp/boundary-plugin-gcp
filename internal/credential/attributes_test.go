@@ -29,6 +29,17 @@ func TestGetCredentialAttributes(t *testing.T) {
 			in:                  map[string]any{},
 			expectedErrContains: "missing required value \"zone\"",
 		},
+		{
+			name: "valid project and zone",
+			in: map[string]any{
+				ConstProject: "test-project",
+				ConstZone:    "us-central-1",
+			},
+			expected: &CredentialAttributes{
+				Project: "test-project",
+				Zone:    "us-central-1",
+			},
+		},
 	}
 
 	for _, tc := range cases {

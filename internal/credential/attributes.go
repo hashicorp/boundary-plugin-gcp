@@ -11,11 +11,15 @@ import (
 	"google.golang.org/protobuf/types/known/structpb"
 )
 
+// CredentialAttributes contain attributes used for authenticating to Google Cloud
+// and accessing a list of instances
 type CredentialAttributes struct {
 	Project string
 	Zone    string
 }
 
+// GetCredentialAttributes checks attributes required by Google Cloud to access
+// a list of instances and populate them into Boundary's host catalog
 func GetCredentialAttributes(in *structpb.Struct) (*CredentialAttributes, error) {
 	badFields := make(map[string]string)
 

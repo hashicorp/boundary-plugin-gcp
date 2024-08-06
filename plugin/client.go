@@ -20,6 +20,8 @@ const (
 	NumberMaxResults = uint32(100)
 )
 
+// GoogleClient contains clients and attributes for authenticating to Google Cloud
+// and finding instances
 type GoogleClient struct {
 	InstancesClient     *compute.InstancesClient
 	InstanceGroupClient *compute.InstanceGroupsClient
@@ -74,6 +76,10 @@ func (c *GoogleClient) getInstancesForInstanceGroup(request *computepb.ListInsta
 func instanceToHost(instance *computepb.Instance) (*pb.ListHostsResponseHost, error) {
 	if instance.GetSelfLink() == "" {
 		return nil, errors.New("response integrity error: missing instance self-link")
+	}
+
+	if instance.GetName() == "" {
+		return nil, errors.New("response integrity error: missing instance name")
 	}
 
 	result := new(pb.ListHostsResponseHost)
