@@ -22,7 +22,7 @@ func TestGetCredentialAttributes(t *testing.T) {
 		{
 			name:                "missing project",
 			in:                  map[string]any{},
-			expectedErrContains: "missing required value \"project\"",
+			expectedErrContains: "missing required value \"project_id\"",
 		},
 		{
 			name:                "missing zone",
@@ -32,12 +32,52 @@ func TestGetCredentialAttributes(t *testing.T) {
 		{
 			name: "valid project and zone",
 			in: map[string]any{
-				ConstProject: "test-project",
-				ConstZone:    "us-central-1",
+				ConstProjectId: "test-project",
+				ConstZone:      "us-central-1",
 			},
 			expected: &CredentialAttributes{
-				Project: "test-project",
-				Zone:    "us-central-1",
+				ProjectId:                 "test-project",
+				Zone:                      "us-central-1",
+				DisableCredentialRotation: false,
+			},
+		},
+		{
+			name: "with disable_credential_rotation",
+			in: map[string]any{
+				ConstDisableCredentialRotation: true,
+				ConstProjectId:                 "test-project",
+				ConstZone:                      "us-central-1",
+			},
+			expected: &CredentialAttributes{
+				DisableCredentialRotation: true,
+				ProjectId:                 "test-project",
+				Zone:                      "us-central-1",
+			},
+		},
+		{
+			name: "with client_email",
+			in: map[string]any{
+				ConstClientEmail: "test@test.com",
+				ConstProjectId:   "test-project",
+				ConstZone:        "us-central-1",
+			},
+			expected: &CredentialAttributes{
+				ClientEmail: "test@test.com",
+				ProjectId:   "test-project",
+				Zone:        "us-central-1",
+			},
+		},
+		{
+			name: "with target_service_account_id",
+			in: map[string]any{
+				ConstTargetServiceAccountID: "test-target-service-account",
+				ConstProjectId:              "test-project",
+				ConstZone:                   "us-central-1",
+			},
+			expected: &CredentialAttributes{
+				TargetServiceAccountId: "test-target-service-account",
+				ProjectId:              "test-project",
+				Zone:                   "us-central-1",
 			},
 		},
 	}
@@ -59,7 +99,7 @@ func TestGetCredentialAttributes(t *testing.T) {
 			}
 
 			require.NoError(err)
-			require.EqualValues(tc.expected.Project, actual.Project)
+			require.EqualValues(tc.expected.ProjectId, actual.ProjectId)
 			require.EqualValues(tc.expected.Zone, actual.Zone)
 		})
 	}
