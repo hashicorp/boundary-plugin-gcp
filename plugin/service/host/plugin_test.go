@@ -40,8 +40,8 @@ func TestListHosts(t *testing.T) {
 
 	hostCatalogAttributes := &hostcatalogs.HostCatalog_Attributes{
 		Attributes: wrapMap(t, map[string]interface{}{
-			cred.ConstProject: project,
-			cred.ConstZone:    zone,
+			cred.ConstProjectId: project,
+			cred.ConstZone:      zone,
 		}),
 	}
 
@@ -309,8 +309,8 @@ func TestCreateCatalog(t *testing.T) {
 
 	hostCatalogAttributes := &hostcatalogs.HostCatalog_Attributes{
 		Attributes: wrapMap(t, map[string]interface{}{
-			cred.ConstProject: project,
-			cred.ConstZone:    zone,
+			cred.ConstProjectId: project,
+			cred.ConstZone:      zone,
 		}),
 	}
 
@@ -390,8 +390,8 @@ func TestUpdateCatalog(t *testing.T) {
 
 	hostCatalogAttributes := &hostcatalogs.HostCatalog_Attributes{
 		Attributes: wrapMap(t, map[string]interface{}{
-			cred.ConstProject: project,
-			cred.ConstZone:    zone,
+			cred.ConstProjectId: project,
+			cred.ConstZone:      zone,
 		}),
 	}
 
@@ -477,8 +477,8 @@ func TestCreateSet(t *testing.T) {
 					Attrs: &hostcatalogs.HostCatalog_Attributes{
 						Attributes: &structpb.Struct{
 							Fields: map[string]*structpb.Value{
-								cred.ConstProject: structpb.NewStringValue("test-project"),
-								cred.ConstZone:    structpb.NewStringValue("us-central1-a"),
+								cred.ConstProjectId: structpb.NewStringValue("test-project"),
+								cred.ConstZone:      structpb.NewStringValue("us-central1-a"),
 							},
 						},
 					},
@@ -599,8 +599,8 @@ func TestUpdateSet(t *testing.T) {
 					Attrs: &hostcatalogs.HostCatalog_Attributes{
 						Attributes: &structpb.Struct{
 							Fields: map[string]*structpb.Value{
-								cred.ConstProject: structpb.NewStringValue("test-project"),
-								cred.ConstZone:    structpb.NewStringValue("us-central1-a"),
+								cred.ConstProjectId: structpb.NewStringValue("test-project"),
+								cred.ConstZone:      structpb.NewStringValue("us-central1-a"),
 							},
 						},
 					},
