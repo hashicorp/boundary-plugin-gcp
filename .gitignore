@@ -1,0 +1,23 @@
+### IntelliJ IDEA project files ###
+.idea
+*.ipr
+*.iml
+*.iws
+
+### Visual Studio ###
+.vscode/
+
+### macOS ###
+# General
+.DS_Store
+.AppleDouble
+.LSOverride
+
+### TF files ###
+.terraform*
+terraform.tfstate*
+plan.tfplan
+
+### Secrets used in testing ###
+secrets/
+secrets.json
