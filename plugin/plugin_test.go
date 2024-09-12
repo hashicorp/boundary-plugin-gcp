@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	cred "github.com/hashicorp/boundary-plugin-google/internal/credential"
+	cred "github.com/hashicorp/boundary-plugin-gcp/internal/credential"
 	"github.com/hashicorp/boundary/sdk/pbs/controller/api/resources/hostcatalogs"
 	"github.com/hashicorp/boundary/sdk/pbs/controller/api/resources/hostsets"
 	pb "github.com/hashicorp/boundary/sdk/pbs/plugin"

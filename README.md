@@ -1,6 +1,6 @@
-# Google Plugin for HashiCorp Boundary
+# GCP Plugin for HashiCorp Boundary
 
-This repo contains the google plugin for [HashiCorp
+This repo contains the GCP plugin for [HashiCorp
 Boundary](https://www.boundaryproject.io/).
 
 > [!IMPORTANT]

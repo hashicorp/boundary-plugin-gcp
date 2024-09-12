@@ -4,7 +4,7 @@
 variable "labels" {
   type = map(string)
   default = {
-    repository = "boundary-plugin-google"
+    repository = "boundary-plugin-gcp"
     purpose    = "testing"
   }
 }

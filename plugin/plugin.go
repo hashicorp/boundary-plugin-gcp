@@ -9,7 +9,7 @@ import (
 
 	compute "cloud.google.com/go/compute/apiv1"
 	computepb "cloud.google.com/go/compute/apiv1/computepb"
-	errors "github.com/hashicorp/boundary-plugin-google/internal/errors"
+	errors "github.com/hashicorp/boundary-plugin-gcp/internal/errors"
 	"github.com/hashicorp/boundary/sdk/pbs/controller/api/resources/hostsets"
 	pb "github.com/hashicorp/boundary/sdk/pbs/plugin"
 	"github.com/mitchellh/mapstructure"

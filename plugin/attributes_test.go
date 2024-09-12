@@ -6,7 +6,7 @@ package plugin
 import (
 	"testing"
 
-	cred "github.com/hashicorp/boundary-plugin-google/internal/credential"
+	cred "github.com/hashicorp/boundary-plugin-gcp/internal/credential"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"

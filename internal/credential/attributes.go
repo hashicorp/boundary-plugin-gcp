@@ -6,8 +6,8 @@ package credential
 import (
 	"fmt"
 
-	"github.com/hashicorp/boundary-plugin-google/internal/errors"
-	"github.com/hashicorp/boundary-plugin-google/internal/values"
+	"github.com/hashicorp/boundary-plugin-gcp/internal/errors"
+	"github.com/hashicorp/boundary-plugin-gcp/internal/values"
 	"google.golang.org/protobuf/types/known/structpb"
 )
 
