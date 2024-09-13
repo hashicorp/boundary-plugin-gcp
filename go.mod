@@ -5,6 +5,7 @@ go 1.21
 require (
 	github.com/hashicorp/boundary/sdk v0.0.47
 	github.com/hashicorp/go-secure-stdlib/parseutil v0.1.8
+	golang.org/x/oauth2 v0.21.0
 	google.golang.org/api v0.188.0
 )
 
@@ -27,7 +28,6 @@ require (
 	go.opentelemetry.io/otel v1.28.0 // indirect
 	go.opentelemetry.io/otel/metric v1.28.0 // indirect
 	go.opentelemetry.io/otel/trace v1.28.0 // indirect
-	golang.org/x/oauth2 v0.21.0 // indirect
 	google.golang.org/genproto v0.0.0-20240711142825-46eb208f015d // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20240711142825-46eb208f015d // indirect
 )
