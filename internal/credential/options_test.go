@@ -14,7 +14,7 @@ func Test_getOpts(t *testing.T) {
 	t.Parallel()
 
 	t.Run("WithCredentialsConfig", func(t *testing.T) {
-		c := &GCPConfig{
+		c := &Config{
 			ProjectId:   "test",
 			ClientEmail: "test",
 		}

@@ -32,8 +32,8 @@ var findDefaultCredentialsFn = func(ctx context.Context, scopes ...string) (*goo
 	return google.FindDefaultCredentials(ctx, scopes...)
 }
 
-// GCPConfig is the configuration for the GCP credential.
-type GCPConfig struct {
+// Config is the configuration for the GCP credential.
+type Config struct {
 	ProjectId              string
 	PrivateKey             string
 	PrivateKeyId           string
@@ -43,8 +43,8 @@ type GCPConfig struct {
 	Client                 *http.Client
 }
 
-// gcpCredentials represents a simplified version of the GCP credentials file format.
-type gcpCredentials struct {
+// credentials represents a simplified version of the GCP credentials file format.
+type credentials struct {
 	ClientEmail  string `json:"client_email"`
 	Type         string `json:"type"`
 	ProjectId    string `json:"project_id"`
@@ -52,9 +52,9 @@ type gcpCredentials struct {
 	PrivateKeyId string `json:"private_key_id"`
 }
 
-// GcpCredentials converts the gcpConfig to GcpCredentials.
-func (c *GCPConfig) toGcpCredentials() *gcpCredentials {
-	return &gcpCredentials{
+// toCredentials converts the config to credentials.
+func (c *Config) toCredentials() *credentials {
+	return &credentials{
 		Type:         "service_account",
 		ProjectId:    c.ProjectId,
 		PrivateKey:   c.PrivateKey,
@@ -68,7 +68,7 @@ func (c *GCPConfig) toGcpCredentials() *gcpCredentials {
 // The returned client is not valid beyond the lifetime of the context.
 //
 // If the client is not set, it will generate the client.
-func (c *GCPConfig) GetClient(ctx context.Context) (*http.Client, error) {
+func (c *Config) GetClient(ctx context.Context) (*http.Client, error) {
 	if c.Client == nil {
 		creds, err := c.generateCredentials(ctx)
 		if err != nil {
@@ -81,7 +81,7 @@ func (c *GCPConfig) GetClient(ctx context.Context) (*http.Client, error) {
 
 // generateCredentials generates GCP credentials based on the provided configuration.
 // It supports Service Account Key, Service Account Impersonation, and ADC.
-func (c *GCPConfig) generateCredentials(ctx context.Context) (*google.Credentials, error) {
+func (c *Config) generateCredentials(ctx context.Context) (*google.Credentials, error) {
 	var creds *google.Credentials
 	var err error
 
@@ -102,7 +102,7 @@ func (c *GCPConfig) generateCredentials(ctx context.Context) (*google.Credential
 }
 
 // credentialsFromServiceAccountKey generates the credentials from the service account key.
-func (c *GCPConfig) credentialsFromServiceAccountKey(ctx context.Context) (*google.Credentials, error) {
+func (c *Config) credentialsFromServiceAccountKey(ctx context.Context) (*google.Credentials, error) {
 	if c.PrivateKey == "" {
 		return nil, status.Error(codes.InvalidArgument, "private_key is required")
 	}
@@ -110,7 +110,7 @@ func (c *GCPConfig) credentialsFromServiceAccountKey(ctx context.Context) (*goog
 		return nil, status.Error(codes.InvalidArgument, "client_email is required")
 	}
 
-	credBytes, err := json.Marshal(c.toGcpCredentials())
+	credBytes, err := json.Marshal(c.toCredentials())
 	if err != nil {
 		return nil, status.Error(codes.Internal, "error marshaling credentials")
 	}
@@ -122,7 +122,7 @@ func (c *GCPConfig) credentialsFromServiceAccountKey(ctx context.Context) (*goog
 }
 
 // credentialsFromImpersonation generates the credentials from the impersonation.
-func (c *GCPConfig) credentialsFromImpersonation(ctx context.Context) (*google.Credentials, error) {
+func (c *Config) credentialsFromImpersonation(ctx context.Context) (*google.Credentials, error) {
 	if c.PrivateKey == "" {
 		return nil, status.Error(codes.InvalidArgument, "private_key is required")
 	}
@@ -133,7 +133,7 @@ func (c *GCPConfig) credentialsFromImpersonation(ctx context.Context) (*google.C
 		return nil, status.Error(codes.InvalidArgument, "target_service_account_id is required")
 	}
 
-	credBytes, err := json.Marshal(c.toGcpCredentials())
+	credBytes, err := json.Marshal(c.toCredentials())
 	if err != nil {
 		return nil, status.Error(codes.Internal, "error marshaling credentials")
 	}
@@ -145,7 +145,7 @@ func (c *GCPConfig) credentialsFromImpersonation(ctx context.Context) (*google.C
 }
 
 // credentialsFromADC generates the credentials from the Application Default Credentials (ADC).
-func (c *GCPConfig) credentialsFromADC(ctx context.Context) (*google.Credentials, error) {
+func (c *Config) credentialsFromADC(ctx context.Context) (*google.Credentials, error) {
 	creds, err := findDefaultCredentialsFn(ctx, c.Scopes...)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to find default credentials: %v", err)

@@ -33,14 +33,14 @@ func TestNewGCPCredentialPersistedState(t *testing.T) {
 			name: "with credentials config",
 			opts: []Option{
 				WithCredentialsConfig(
-					&GCPConfig{
+					&Config{
 						ProjectId:   "test-project",
 						ClientEmail: "test-email",
 					},
 				),
 			},
 			expected: &GCPCredentialPersistedState{
-				CredentialsConfig: &GCPConfig{
+				CredentialsConfig: &Config{
 					ProjectId:   "test-project",
 					ClientEmail: "test-email",
 				},

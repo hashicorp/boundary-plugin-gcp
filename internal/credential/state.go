@@ -12,7 +12,7 @@ type CredentialType int
 // GoogleCredentialPersistedState is the persisted state for the GCP credential.
 type GCPCredentialPersistedState struct {
 	// CredentialsConfig is the credential configuration for the GCP credential.
-	CredentialsConfig *GCPConfig
+	CredentialsConfig *Config
 	// CredsLastRotatedTime is the last rotation of service account key for the GCP credential.
 	CredsLastRotatedTime time.Time
 }

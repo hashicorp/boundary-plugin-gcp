@@ -7,7 +7,7 @@ import "time"
 
 // options = how options are represented
 type Options struct {
-	WithCredentialsConfig    *GCPConfig
+	WithCredentialsConfig    *Config
 	WithCredsLastRotatedTime time.Time
 }
 
@@ -27,11 +27,11 @@ type Option func(*Options) error
 
 func getDefaultOptions() *Options {
 	return &Options{
-		WithCredentialsConfig: &GCPConfig{},
+		WithCredentialsConfig: &Config{},
 	}
 }
 
-func WithCredentialsConfig(c *GCPConfig) Option {
+func WithCredentialsConfig(c *Config) Option {
 	return func(o *Options) error {
 		o.WithCredentialsConfig = c
 		return nil

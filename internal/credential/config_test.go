@@ -29,13 +29,13 @@ MIIBVgIBADANBgkqhkiG9w0BAQEFAASCAT8wggE7AgEAAkEA1y+Vmxg1hK6j0ef6
 
 	tests := []struct {
 		name        string
-		config      *GCPConfig
+		config      *Config
 		wantErr     bool
 		expectedErr string
 	}{
 		{
 			name: "Service Account Key Authentication",
-			config: &GCPConfig{
+			config: &Config{
 				PrivateKey:   fakePrivateKey,
 				ClientEmail:  "test_email@example.com",
 				ProjectId:    "test_project",
@@ -45,7 +45,7 @@ MIIBVgIBADANBgkqhkiG9w0BAQEFAASCAT8wggE7AgEAAkEA1y+Vmxg1hK6j0ef6
 		},
 		{
 			name: "Service Account Impersonation",
-			config: &GCPConfig{
+			config: &Config{
 				PrivateKey:             fakePrivateKey,
 				ClientEmail:            "test_email@example.com",
 				ProjectId:              "test_project",
@@ -57,7 +57,7 @@ MIIBVgIBADANBgkqhkiG9w0BAQEFAASCAT8wggE7AgEAAkEA1y+Vmxg1hK6j0ef6
 		},
 		{
 			name:        "Application Default Credentials",
-			config:      &GCPConfig{},
+			config:      &Config{},
 			wantErr:     true, // Since ADC might not be available in test environment
 			expectedErr: "failed to find default credentials",
 		},
@@ -81,7 +81,7 @@ MIIBVgIBADANBgkqhkiG9w0BAQEFAASCAT8wggE7AgEAAkEA1y+Vmxg1hK6j0ef6
 func TestGetClient(t *testing.T) {
 	ctx := context.Background()
 
-	config := &GCPConfig{
+	config := &Config{
 		PrivateKey:   "test_private_key",
 		ClientEmail:  "test_email@example.com",
 		ProjectId:    "test_project",
@@ -109,13 +109,13 @@ MIIEvQIBADANBgkqhkiG9w0BAQEFAASC
 	// Test cases
 	tests := []struct {
 		name        string
-		config      *GCPConfig
+		config      *Config
 		wantErr     bool
 		expectedErr string
 	}{
 		{
 			name: "Successful Credential Generation",
-			config: &GCPConfig{
+			config: &Config{
 				PrivateKey:   fakePrivateKey,
 				ClientEmail:  "test-email@example.com",
 				ProjectId:    "test-project-id",
@@ -125,7 +125,7 @@ MIIEvQIBADANBgkqhkiG9w0BAQEFAASC
 		},
 		{
 			name: "Missing Private Key",
-			config: &GCPConfig{
+			config: &Config{
 				ClientEmail:  "test-email@example.com",
 				ProjectId:    "test-project-id",
 				PrivateKeyId: "test-private-key-id",
@@ -135,7 +135,7 @@ MIIEvQIBADANBgkqhkiG9w0BAQEFAASC
 		},
 		{
 			name: "Missing Client Email",
-			config: &GCPConfig{
+			config: &Config{
 				PrivateKey:   fakePrivateKey,
 				ProjectId:    "test-project-id",
 				PrivateKeyId: "test-private-key-id",
@@ -197,7 +197,7 @@ func TestCredentialsFromADC(t *testing.T) {
 			// Override findDefaultCredentials with the mock implementation.
 			findDefaultCredentialsFn = tt.mockFindDefaultCred
 
-			config := &GCPConfig{}
+			config := &Config{}
 
 			creds, err := config.credentialsFromADC(ctx)
 			if tt.wantErr {
@@ -229,14 +229,14 @@ MIIEvQIBADANBgkqhkiG9w0BAQEFAASC
 
 	tests := []struct {
 		name                            string
-		config                          *GCPConfig
+		config                          *Config
 		mockImpersonateServiceAccountFn func(ctx context.Context, config impersonate.CredentialsConfig, opts ...googleOption.ClientOption) (oauth2.TokenSource, error)
 		wantErr                         bool
 		expectedErr                     string
 	}{
 		{
 			name: "Successful Impersonation",
-			config: &GCPConfig{
+			config: &Config{
 				PrivateKey:             fakePrivateKey,
 				ClientEmail:            "test-email@example.com",
 				ProjectId:              "test-project-id",
@@ -251,7 +251,7 @@ MIIEvQIBADANBgkqhkiG9w0BAQEFAASC
 		},
 		{
 			name: "Error during Impersonation",
-			config: &GCPConfig{
+			config: &Config{
 				PrivateKey:             fakePrivateKey,
 				ClientEmail:            "test-email@example.com",
 				ProjectId:              "test-project-id",
@@ -267,7 +267,7 @@ MIIEvQIBADANBgkqhkiG9w0BAQEFAASC
 		},
 		{
 			name: "Missing Private Key",
-			config: &GCPConfig{
+			config: &Config{
 				ClientEmail:            "test-email@example.com",
 				ProjectId:              "test-project-id",
 				PrivateKeyId:           "test-private-key-id",
@@ -278,7 +278,7 @@ MIIEvQIBADANBgkqhkiG9w0BAQEFAASC
 		},
 		{
 			name: "Missing Client Email",
-			config: &GCPConfig{
+			config: &Config{
 				PrivateKey:             fakePrivateKey,
 				ProjectId:              "test-project-id",
 				PrivateKeyId:           "test-private-key-id",
@@ -290,7 +290,7 @@ MIIEvQIBADANBgkqhkiG9w0BAQEFAASC
 		},
 		{
 			name: "Missing Target Service Account ID",
-			config: &GCPConfig{
+			config: &Config{
 				PrivateKey:   fakePrivateKey,
 				ClientEmail:  "test-email@example.com",
 				ProjectId:    "test-project-id",
