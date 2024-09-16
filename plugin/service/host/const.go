@@ -1,7 +1,7 @@
 // Copyright (c) HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
-package plugin
+package host
 
 const (
 	// ConstListInstancesFilter refers to a Google Cloud SDK filter to search for instances

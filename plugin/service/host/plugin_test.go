@@ -1,7 +1,7 @@
 // Copyright (c) HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
-package plugin
+package host
 
 import (
 	"context"
@@ -28,7 +28,7 @@ func wrapMap(t *testing.T, in map[string]interface{}) *structpb.Struct {
 func TestListHosts(t *testing.T) {
 	t.Skip("TODO: this needs a secrets file to run - maybe only manually?")
 	ctx := context.Background()
-	p := &GooglePlugin{}
+	p := &HostPlugin{}
 
 	wd, err := os.Getwd()
 	require.NoError(t, err)
@@ -297,7 +297,7 @@ func TestListHosts(t *testing.T) {
 func TestCreateCatalog(t *testing.T) {
 	t.Skip("TODO: this needs a secrets file to run - maybe only manually?")
 	ctx := context.Background()
-	p := &GooglePlugin{}
+	p := &HostPlugin{}
 
 	wd, err := os.Getwd()
 	require.NoError(t, err)
@@ -378,7 +378,7 @@ func TestCreateCatalog(t *testing.T) {
 func TestUpdateCatalog(t *testing.T) {
 	t.Skip("TODO: this needs a secrets file to run - maybe only manually?")
 	ctx := context.Background()
-	p := &GooglePlugin{}
+	p := &HostPlugin{}
 
 	wd, err := os.Getwd()
 	require.NoError(t, err)
@@ -458,7 +458,7 @@ func TestUpdateCatalog(t *testing.T) {
 
 func TestCreateSet(t *testing.T) {
 	ctx := context.Background()
-	p := &GooglePlugin{}
+	p := &HostPlugin{}
 
 	cases := []struct {
 		name        string
@@ -580,7 +580,7 @@ func TestCreateSet(t *testing.T) {
 
 func TestUpdateSet(t *testing.T) {
 	ctx := context.Background()
-	p := &GooglePlugin{}
+	p := &HostPlugin{}
 
 	cases := []struct {
 		name        string
