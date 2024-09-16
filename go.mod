@@ -1,4 +1,4 @@
-module github.com/hashicorp/boundary-plugin-google
+module github.com/hashicorp/boundary-plugin-gcp
 
 go 1.21
 
