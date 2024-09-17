@@ -34,9 +34,15 @@ func getCatalogAttributes(in *structpb.Struct) (*CatalogAttributes, error) {
 	for s := range unknownFields {
 		switch s {
 		// Ignore knownFields from CredentialAttributes
-		case cred.ConstProject:
+		case cred.ConstProjectId:
 			continue
 		case cred.ConstZone:
+			continue
+		case cred.ConstDisableCredentialRotation:
+			continue
+		case cred.ConstClientEmail:
+			continue
+		case cred.ConstTargetServiceAccountID:
 			continue
 		default:
 			badFields[fmt.Sprintf("attributes.%s", s)] = "unrecognized field"
@@ -107,7 +113,7 @@ func getSetAttributes(in *structpb.Struct) (*SetAttributes, error) {
 
 func buildListInstancesRequest(attributes *SetAttributes, catalog *CatalogAttributes) *computepb.ListInstancesRequest {
 	request := &computepb.ListInstancesRequest{
-		Project: catalog.Project,
+		Project: catalog.ProjectId,
 		Zone:    catalog.Zone,
 	}
 
@@ -121,7 +127,7 @@ func buildListInstancesRequest(attributes *SetAttributes, catalog *CatalogAttrib
 func buildListInstanceGroupsRequest(attributes *SetAttributes, catalog *CatalogAttributes) *computepb.ListInstancesInstanceGroupsRequest {
 	request := &computepb.ListInstancesInstanceGroupsRequest{
 		InstanceGroup: attributes.InstanceGroup,
-		Project:       catalog.Project,
+		Project:       catalog.ProjectId,
 		Zone:          catalog.Zone,
 	}
 

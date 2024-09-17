@@ -21,20 +21,20 @@ func TestGetCatalogAttributes(t *testing.T) {
 		expectedErrContains string
 	}{
 		{
-			name: "missing project and zone",
+			name: "missing project_id and zone",
 			in: &structpb.Struct{
 				Fields: make(map[string]*structpb.Value),
 			},
-			expectedErrContains: "attributes.project: missing required value \"project\", attributes.zone: missing required value \"zone\"",
+			expectedErrContains: "attributes.project_id: missing required value \"project_id\", attributes.zone: missing required value \"zone\"",
 		},
 		{
 			name: "unknown fields",
 			in: &structpb.Struct{
 				Fields: map[string]*structpb.Value{
-					"project": structpb.NewStringValue("test-12345"),
-					"zone":    structpb.NewStringValue("us-central-1a"),
-					"foo":     structpb.NewBoolValue(true),
-					"bar":     structpb.NewBoolValue(true),
+					"project_id": structpb.NewStringValue("test-12345"),
+					"zone":       structpb.NewStringValue("us-central-1a"),
+					"foo":        structpb.NewBoolValue(true),
+					"bar":        structpb.NewBoolValue(true),
 				},
 			},
 			expectedErrContains: "attributes.bar: unrecognized field, attributes.foo: unrecognized field",
@@ -43,13 +43,13 @@ func TestGetCatalogAttributes(t *testing.T) {
 			name: "valid project and zone",
 			in: &structpb.Struct{
 				Fields: map[string]*structpb.Value{
-					"project": structpb.NewStringValue("test-12345"),
-					"zone":    structpb.NewStringValue("us-central-1a"),
+					"project_id": structpb.NewStringValue("test-12345"),
+					"zone":       structpb.NewStringValue("us-central-1a"),
 				},
 			},
 			expected: &CatalogAttributes{&cred.CredentialAttributes{
-				Project: "test-12345",
-				Zone:    "us-central-1a",
+				ProjectId: "test-12345",
+				Zone:      "us-central-1a",
 			}},
 		},
 	}
