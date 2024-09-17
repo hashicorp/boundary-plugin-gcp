@@ -17,7 +17,7 @@ func TestNewGCPCredentialPersistedState(t *testing.T) {
 	cases := []struct {
 		name        string
 		opts        []Option
-		expected    *GCPCredentialPersistedState
+		expected    *PersistedState
 		expectedErr string
 	}{
 		{
@@ -39,7 +39,7 @@ func TestNewGCPCredentialPersistedState(t *testing.T) {
 					},
 				),
 			},
-			expected: &GCPCredentialPersistedState{
+			expected: &PersistedState{
 				CredentialsConfig: &Config{
 					ProjectId:   "test-project",
 					ClientEmail: "test-email",
@@ -51,7 +51,7 @@ func TestNewGCPCredentialPersistedState(t *testing.T) {
 			opts: []Option{
 				WithCredsLastRotatedTime(staticTime),
 			},
-			expected: &GCPCredentialPersistedState{
+			expected: &PersistedState{
 				CredsLastRotatedTime: staticTime,
 			},
 		},
@@ -61,7 +61,7 @@ func TestNewGCPCredentialPersistedState(t *testing.T) {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			require := require.New(t)
-			actual, err := NewGCPCredentialPersistedState(tc.opts...)
+			actual, err := NewPersistedState(tc.opts...)
 			if tc.expectedErr != "" {
 				require.EqualError(err, tc.expectedErr)
 				return

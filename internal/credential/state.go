@@ -9,17 +9,17 @@ import (
 
 type CredentialType int
 
-// GoogleCredentialPersistedState is the persisted state for the GCP credential.
-type GCPCredentialPersistedState struct {
+// PersistedState is the persisted state for the GCP credential.
+type PersistedState struct {
 	// CredentialsConfig is the credential configuration for the GCP credential.
 	CredentialsConfig *Config
 	// CredsLastRotatedTime is the last rotation of service account key for the GCP credential.
 	CredsLastRotatedTime time.Time
 }
 
-// NewGCPCredentialPersistedState - create a new GoogleCredentialPersistedState
-func NewGCPCredentialPersistedState(opt ...Option) (*GCPCredentialPersistedState, error) {
-	s := new(GCPCredentialPersistedState)
+// NewPersistedState - create a new PersistedState
+func NewPersistedState(opt ...Option) (*PersistedState, error) {
+	s := new(PersistedState)
 	opts, err := getOpts(opt...)
 	if err != nil {
 		return nil, err

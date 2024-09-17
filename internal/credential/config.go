@@ -32,6 +32,10 @@ var findDefaultCredentialsFn = func(ctx context.Context, scopes ...string) (*goo
 	return google.FindDefaultCredentials(ctx, scopes...)
 }
 
+// serviceAccountTokenLifetime is the lifetime of the generated GCP authentication token.
+// The token is valid for 1 hour.
+const serviceAccountTokenLifetime = time.Hour
+
 // Config is the configuration for the GCP credential.
 type Config struct {
 	ProjectId              string
@@ -175,7 +179,7 @@ func impersonateServiceAccount(
 	ts, err := impersonateServiceAccountFn(ctx, impersonate.CredentialsConfig{
 		TargetPrincipal: targetServiceAccountId,
 		Scopes:          scopes,
-		Lifetime:        time.Hour,
+		Lifetime:        serviceAccountTokenLifetime,
 	}, googleOption.WithCredentialsJSON(baseCredentialsJSON))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create impersonated token source: %v", err)

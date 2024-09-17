@@ -31,6 +31,7 @@ func getDefaultOptions() *Options {
 	}
 }
 
+// WithCredentialsConfig - set the credentials config
 func WithCredentialsConfig(c *Config) Option {
 	return func(o *Options) error {
 		o.WithCredentialsConfig = c
@@ -38,6 +39,7 @@ func WithCredentialsConfig(c *Config) Option {
 	}
 }
 
+// WithCredsLastRotatedTime - set the last rotated time
 func WithCredsLastRotatedTime(t time.Time) Option {
 	return func(o *Options) error {
 		o.WithCredsLastRotatedTime = t
