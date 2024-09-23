@@ -3,12 +3,17 @@
 
 package credential
 
-import "time"
+import (
+	"time"
+
+	googleOption "google.golang.org/api/option"
+)
 
 // options = how options are represented
 type Options struct {
 	WithCredentialsConfig    *Config
 	WithCredsLastRotatedTime time.Time
+	WithTestGoogleOptions    []googleOption.ClientOption
 }
 
 // getOpts - iterate the inbound Options and return a struct
@@ -43,6 +48,14 @@ func WithCredentialsConfig(c *Config) Option {
 func WithCredsLastRotatedTime(t time.Time) Option {
 	return func(o *Options) error {
 		o.WithCredsLastRotatedTime = t
+		return nil
+	}
+}
+
+// WithTestGoogleOptions - set google options for testing
+func WithTestGoogleOptions(opts []googleOption.ClientOption) Option {
+	return func(o *Options) error {
+		o.WithTestGoogleOptions = opts
 		return nil
 	}
 }

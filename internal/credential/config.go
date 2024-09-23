@@ -7,7 +7,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/http"
 	"time"
 
 	"golang.org/x/oauth2"
@@ -44,7 +43,7 @@ type Config struct {
 	ClientEmail            string
 	TargetServiceAccountId string
 	Scopes                 []string
-	Client                 *http.Client
+	credentials            *google.Credentials
 }
 
 // credentials represents a simplified version of the GCP credentials file format.
@@ -67,40 +66,58 @@ func (c *Config) toCredentials() *credentials {
 	}
 }
 
-// GetClient returns the client for the configuration.
-// The client is a *http.Client which is created with GCP credentials.
-// The returned client is not valid beyond the lifetime of the context.
-//
-// If the client is not set, it will generate the client.
-func (c *Config) GetClient(ctx context.Context) (*http.Client, error) {
-	if c.Client == nil {
-		creds, err := c.generateCredentials(ctx)
-		if err != nil {
-			return nil, status.Errorf(codes.Internal, "error getting credentials: %v", err)
-		}
-		c.Client = oauth2.NewClient(ctx, creds.TokenSource)
+// clone returns a copy of the configuration.
+func (c *Config) clone() *Config {
+	return &Config{
+		ProjectId:              c.ProjectId,
+		PrivateKey:             c.PrivateKey,
+		PrivateKeyId:           c.PrivateKeyId,
+		ClientEmail:            c.ClientEmail,
+		TargetServiceAccountId: c.TargetServiceAccountId,
+		Scopes:                 c.Scopes,
+		credentials:            c.credentials,
 	}
-	return c.Client, nil
 }
 
-// generateCredentials generates GCP credentials based on the provided configuration.
+// GenerateCredentials generates GCP credentials based on the provided configuration.
 // It supports Service Account Key, Service Account Impersonation, and ADC.
-func (c *Config) generateCredentials(ctx context.Context) (*google.Credentials, error) {
+// If the credentials are already generated, it will return the cached credentials.
+func (c *Config) GenerateCredentials(ctx context.Context) (*google.Credentials, error) {
+	if c.credentials != nil {
+		return c.credentials, nil
+	}
+
 	var creds *google.Credentials
 	var err error
 
 	switch {
 	case c.PrivateKey != "" && c.ClientEmail != "" && c.TargetServiceAccountId != "":
 		creds, err = c.credentialsFromImpersonation(ctx)
+		if err != nil {
+			return nil, status.Errorf(
+				codes.Internal,
+				"failed to generate credentials from service account impersonation: %v", err,
+			)
+		}
 	case c.PrivateKey != "" && c.ClientEmail != "":
 		creds, err = c.credentialsFromServiceAccountKey(ctx)
+		if err != nil {
+			return nil, status.Errorf(
+				codes.Internal,
+				"failed to generate credentials from service account key: %v", err,
+			)
+		}
 	default:
 		creds, err = c.credentialsFromADC(ctx)
+		if err != nil {
+			return nil, status.Errorf(
+				codes.Internal,
+				"failed to generate credentials from Application Default Credentials: %v", err,
+			)
+		}
 	}
 
-	if err != nil {
-		return nil, err
-	}
+	c.credentials = creds
 
 	return creds, nil
 }

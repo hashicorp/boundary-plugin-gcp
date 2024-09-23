@@ -65,7 +65,7 @@ MIIBVgIBADANBgkqhkiG9w0BAQEFAASCAT8wggE7AgEAAkEA1y+Vmxg1hK6j0ef6
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			creds, err := tt.config.generateCredentials(ctx)
+			creds, err := tt.config.GenerateCredentials(ctx)
 			if tt.wantErr {
 				require.ErrorContains(t, err, tt.expectedErr)
 				require.Nil(t, creds)
@@ -76,26 +76,6 @@ MIIBVgIBADANBgkqhkiG9w0BAQEFAASCAT8wggE7AgEAAkEA1y+Vmxg1hK6j0ef6
 			require.Equal(t, tt.config.ProjectId, creds.ProjectID)
 		})
 	}
-}
-
-func TestGetClient(t *testing.T) {
-	ctx := context.Background()
-
-	config := &Config{
-		PrivateKey:   "test_private_key",
-		ClientEmail:  "test_email@example.com",
-		ProjectId:    "test_project",
-		PrivateKeyId: "test_key_id",
-	}
-
-	client, err := config.GetClient(ctx)
-	require.NoError(t, err)
-	require.NotNil(t, client)
-
-	// Call GetClient again to ensure the cached client is returned
-	cachedClient, err := config.GetClient(ctx)
-	require.NoError(t, err)
-	require.Equal(t, client, cachedClient)
 }
 
 func TestCredentialsFromServiceAccountKey(t *testing.T) {
@@ -323,4 +303,48 @@ MIIEvQIBADANBgkqhkiG9w0BAQEFAASC
 			require.NotNil(t, token)
 		})
 	}
+}
+
+func TestClone(t *testing.T) {
+	originalConfig := &Config{
+		ProjectId:              "original-project-id",
+		PrivateKey:             "original-private-key",
+		PrivateKeyId:           "original-private-key-id",
+		ClientEmail:            "original-client-email@example.com",
+		TargetServiceAccountId: "original-target-service-account-id",
+		Scopes:                 []string{"scope1", "scope2"},
+		credentials: &google.Credentials{
+			ProjectID: "original-project-id",
+		},
+	}
+
+	clonedConfig := originalConfig.clone()
+
+	require.NotNil(t, clonedConfig)
+	require.Equal(t, originalConfig.ProjectId, clonedConfig.ProjectId)
+	require.Equal(t, originalConfig.PrivateKey, clonedConfig.PrivateKey)
+	require.Equal(t, originalConfig.PrivateKeyId, clonedConfig.PrivateKeyId)
+	require.Equal(t, originalConfig.ClientEmail, clonedConfig.ClientEmail)
+	require.Equal(t, originalConfig.TargetServiceAccountId, clonedConfig.TargetServiceAccountId)
+	require.Equal(t, originalConfig.Scopes, clonedConfig.Scopes)
+	require.Equal(t, originalConfig.credentials, clonedConfig.credentials)
+
+	// Ensure that modifying the cloned config does not affect the original config
+	clonedConfig.ProjectId = "modified-project-id"
+	clonedConfig.PrivateKey = "modified-private-key"
+	clonedConfig.PrivateKeyId = "modified-private-key-id"
+	clonedConfig.ClientEmail = "modified-client-email@example.com"
+	clonedConfig.TargetServiceAccountId = "modified-target-service-account-id"
+	clonedConfig.Scopes = []string{"modified-scope1", "modified-scope2"}
+	clonedConfig.credentials = &google.Credentials{
+		ProjectID: "modified-project-id",
+	}
+
+	require.NotEqual(t, originalConfig.ProjectId, clonedConfig.ProjectId)
+	require.NotEqual(t, originalConfig.PrivateKey, clonedConfig.PrivateKey)
+	require.NotEqual(t, originalConfig.PrivateKeyId, clonedConfig.PrivateKeyId)
+	require.NotEqual(t, originalConfig.ClientEmail, clonedConfig.ClientEmail)
+	require.NotEqual(t, originalConfig.TargetServiceAccountId, clonedConfig.TargetServiceAccountId)
+	require.NotEqual(t, originalConfig.Scopes, clonedConfig.Scopes)
+	require.NotEqual(t, originalConfig.credentials, clonedConfig.credentials)
 }
