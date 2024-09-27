@@ -313,9 +313,6 @@ func TestClone(t *testing.T) {
 		ClientEmail:            "original-client-email@example.com",
 		TargetServiceAccountId: "original-target-service-account-id",
 		Scopes:                 []string{"scope1", "scope2"},
-		credentials: &google.Credentials{
-			ProjectID: "original-project-id",
-		},
 	}
 
 	clonedConfig := originalConfig.clone()
@@ -327,7 +324,6 @@ func TestClone(t *testing.T) {
 	require.Equal(t, originalConfig.ClientEmail, clonedConfig.ClientEmail)
 	require.Equal(t, originalConfig.TargetServiceAccountId, clonedConfig.TargetServiceAccountId)
 	require.Equal(t, originalConfig.Scopes, clonedConfig.Scopes)
-	require.Equal(t, originalConfig.credentials, clonedConfig.credentials)
 
 	// Ensure that modifying the cloned config does not affect the original config
 	clonedConfig.ProjectId = "modified-project-id"
@@ -336,9 +332,6 @@ func TestClone(t *testing.T) {
 	clonedConfig.ClientEmail = "modified-client-email@example.com"
 	clonedConfig.TargetServiceAccountId = "modified-target-service-account-id"
 	clonedConfig.Scopes = []string{"modified-scope1", "modified-scope2"}
-	clonedConfig.credentials = &google.Credentials{
-		ProjectID: "modified-project-id",
-	}
 
 	require.NotEqual(t, originalConfig.ProjectId, clonedConfig.ProjectId)
 	require.NotEqual(t, originalConfig.PrivateKey, clonedConfig.PrivateKey)
@@ -346,5 +339,4 @@ func TestClone(t *testing.T) {
 	require.NotEqual(t, originalConfig.ClientEmail, clonedConfig.ClientEmail)
 	require.NotEqual(t, originalConfig.TargetServiceAccountId, clonedConfig.TargetServiceAccountId)
 	require.NotEqual(t, originalConfig.Scopes, clonedConfig.Scopes)
-	require.NotEqual(t, originalConfig.credentials, clonedConfig.credentials)
 }

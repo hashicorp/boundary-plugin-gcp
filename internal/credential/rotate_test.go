@@ -116,11 +116,12 @@ func TestRotateServiceAccountKey(t *testing.T) {
 			if tt.setup != nil {
 				tt.setup()
 			}
-			testOptions := WithTestGoogleOptions([]googleOption.ClientOption{
+			testOptions := []googleOption.ClientOption{
 				googleOption.WithEndpoint(addr),
 				googleOption.WithoutAuthentication(),
 				googleOption.WithGRPCDialOption(grpc.WithTransportCredentials(insecure.NewCredentials())),
-			})
+				googleOption.WithTokenSource(nil),
+			}
 			initialPrivateKey := tt.config.PrivateKey
 			initialPrivateKeyId := tt.config.PrivateKeyId
 			initialClientEmail := tt.config.ClientEmail
@@ -131,7 +132,7 @@ func TestRotateServiceAccountKey(t *testing.T) {
 				IAMServiceAccountKeysDeletePermission,
 			}
 
-			err = tt.config.RotateServiceAccountKey(ctx, permissions, testOptions)
+			err = tt.config.RotateServiceAccountKey(ctx, permissions, testOptions...)
 			if tt.expectedError != nil {
 				require.ErrorContains(t, err, tt.expectedError.Error())
 				require.Equal(t, initialClientEmail, tt.config.ClientEmail)
@@ -149,7 +150,7 @@ func TestRotateServiceAccountKey(t *testing.T) {
 	}
 }
 
-func TestTestIamPermissions(t *testing.T) {
+func TestValidateIamPermissions(t *testing.T) {
 	ctx := context.Background()
 	testResourceServer := &testResourceServer{}
 
@@ -249,12 +250,13 @@ func TestTestIamPermissions(t *testing.T) {
 			addr, err := gsrv.serve()
 			require.NoError(t, err)
 
-			testOptions := WithTestGoogleOptions([]googleOption.ClientOption{
+			testOptions := []googleOption.ClientOption{
 				googleOption.WithEndpoint(addr),
 				googleOption.WithoutAuthentication(),
 				googleOption.WithGRPCDialOption(grpc.WithTransportCredentials(insecure.NewCredentials())),
-			})
-			permissions, err := tt.config.TestIamPermissions(ctx, tt.permissions, testOptions)
+				googleOption.WithTokenSource(nil),
+			}
+			permissions, err := tt.config.ValidateIamPermissions(ctx, tt.permissions, testOptions...)
 			if tt.wantErr {
 				require.ErrorContains(t, err, tt.expectedErr)
 				require.Nil(t, permissions)

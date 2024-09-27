@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"strings"
 
+	"slices"
+
 	admin "cloud.google.com/go/iam/admin/apiv1"
 	"cloud.google.com/go/iam/admin/apiv1/adminpb"
 	"cloud.google.com/go/iam/apiv1/iampb"
@@ -30,7 +32,7 @@ const (
 // If deletion of the old private key is successful, the new private key and
 // private key id are written into the credentials config and nil is returned.
 // On any error, the old credentials are not overwritten.
-func (c *Config) RotateServiceAccountKey(ctx context.Context, permissions []string, opt ...Option) error {
+func (c *Config) RotateServiceAccountKey(ctx context.Context, permissions []string, opts ...option.ClientOption) error {
 	if c.PrivateKey == "" {
 		return status.Error(codes.InvalidArgument, "cannot rotate credentials when private key is not set")
 	}
@@ -41,25 +43,16 @@ func (c *Config) RotateServiceAccountKey(ctx context.Context, permissions []stri
 		return status.Error(codes.InvalidArgument, "cannot rotate credentials when client email is not set")
 	}
 
-	opts, err := getOpts(opt...)
+	creds, err := c.GenerateCredentials(ctx)
 	if err != nil {
-		return status.Errorf(codes.Internal, "error getting options: %v", err)
+		return status.Errorf(codes.Unauthenticated, "error generating credentials: %v", err)
+	}
+	if creds.TokenSource == nil {
+		return status.Error(codes.Unauthenticated, "error generating credentials: token source is nil")
 	}
 
-	var clientOptions []option.ClientOption
-
-	if opts.WithTestGoogleOptions != nil {
-		clientOptions = opts.WithTestGoogleOptions
-	} else {
-		creds, err := c.GenerateCredentials(ctx)
-		if err != nil {
-			return status.Errorf(codes.Unauthenticated, "error generating credentials: %v", err)
-		}
-		if creds.TokenSource == nil {
-			return status.Error(codes.Unauthenticated, "error generating credentials: token source is nil")
-		}
-		clientOptions = []option.ClientOption{option.WithTokenSource(creds.TokenSource)}
-	}
+	clientOptions := []option.ClientOption{option.WithTokenSource(creds.TokenSource)}
+	clientOptions = append(clientOptions, opts...)
 
 	iamClient, err := admin.NewIamClient(ctx, clientOptions...)
 	if err != nil {
@@ -81,27 +74,22 @@ func (c *Config) RotateServiceAccountKey(ctx context.Context, permissions []stri
 	}
 
 	// Clone the config, update the private key and private key ID with the new key.
-	// Clear the client so that a new one is created with the new credentials.
 	newConfig := c.clone()
 	newConfig.PrivateKey = string(createServiceAccountKeyRes.PrivateKeyData)
 	newConfig.PrivateKeyId = privateKeyId
-	newConfig.credentials = nil
 
-	if opts.WithTestGoogleOptions != nil {
-		clientOptions = opts.WithTestGoogleOptions
-	} else {
-		newCreds, err := newConfig.GenerateCredentials(ctx)
-		if err != nil {
-			return status.Errorf(codes.Unauthenticated, "error generating credentials: %v", err)
-		}
-		if newCreds.TokenSource == nil {
-			return status.Error(codes.Unauthenticated, "error generating credentials: token source is nil")
-		}
-		clientOptions = []option.ClientOption{option.WithTokenSource(newCreds.TokenSource)}
+	newCreds, err := newConfig.GenerateCredentials(ctx)
+	if err != nil {
+		return status.Errorf(codes.Unauthenticated, "error generating credentials: %v", err)
 	}
+	if newCreds.TokenSource == nil {
+		return status.Error(codes.Unauthenticated, "error generating credentials: token source is nil")
+	}
+	clientOptions = []option.ClientOption{option.WithTokenSource(newCreds.TokenSource)}
+	clientOptions = append(clientOptions, opts...)
 
 	// Validate that the new credentials have the necessary permissions.
-	_, err = newConfig.TestIamPermissions(ctx, permissions, opt...)
+	_, err = newConfig.ValidateIamPermissions(ctx, permissions, clientOptions...)
 	if err != nil {
 		return status.Errorf(codes.PermissionDenied, "error testing IAM permissions with rotated service account key: %v", err)
 	}
@@ -124,9 +112,9 @@ func (c *Config) RotateServiceAccountKey(ctx context.Context, permissions []stri
 	return nil
 }
 
-// TestIamPermissions tests the IAM permissions for the credentials.
+// ValidateIamPermissions tests the IAM permissions for the credentials.
 // It returns the granted permissions if successful.
-func (c *Config) TestIamPermissions(ctx context.Context, permissions []string, opt ...Option) ([]string, error) {
+func (c *Config) ValidateIamPermissions(ctx context.Context, permissions []string, opts ...option.ClientOption) ([]string, error) {
 	if len(permissions) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "permissions are required")
 	}
@@ -139,18 +127,8 @@ func (c *Config) TestIamPermissions(ctx context.Context, permissions []string, o
 		return nil, status.Error(codes.Unauthenticated, "error generating credentials: token source is nil")
 	}
 
-	opts, err := getOpts(opt...)
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "error getting options: %v", err)
-	}
-
-	var clientOptions []option.ClientOption
-
-	if opts.WithTestGoogleOptions != nil {
-		clientOptions = opts.WithTestGoogleOptions
-	} else {
-		clientOptions = []option.ClientOption{option.WithTokenSource(creds.TokenSource)}
-	}
+	clientOptions := []option.ClientOption{option.WithTokenSource(creds.TokenSource)}
+	clientOptions = append(clientOptions, opts...)
 
 	rmClient, err := resourcemanager.NewProjectsClient(ctx, clientOptions...)
 	if err != nil {
@@ -162,7 +140,7 @@ func (c *Config) TestIamPermissions(ctx context.Context, permissions []string, o
 		Permissions: permissions,
 	})
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to test IAM permissions: %v", err)
+		return nil, status.Errorf(codes.Internal, "failed to validate IAM permissions: %v", err)
 	}
 
 	if len(resp.Permissions) == 0 {
@@ -172,13 +150,7 @@ func (c *Config) TestIamPermissions(ctx context.Context, permissions []string, o
 	if len(resp.Permissions) != len(permissions) {
 		missingPermissions := make([]string, 0, len(permissions))
 		for _, permission := range permissions {
-			found := false
-			for _, grantedPermission := range resp.Permissions {
-				if permission == grantedPermission {
-					found = true
-					break
-				}
-			}
+			found := slices.Contains(resp.Permissions, permission)
 			if !found {
 				missingPermissions = append(missingPermissions, permission)
 			}

@@ -43,7 +43,6 @@ type Config struct {
 	ClientEmail            string
 	TargetServiceAccountId string
 	Scopes                 []string
-	credentials            *google.Credentials
 }
 
 // credentials represents a simplified version of the GCP credentials file format.
@@ -75,7 +74,6 @@ func (c *Config) clone() *Config {
 		ClientEmail:            c.ClientEmail,
 		TargetServiceAccountId: c.TargetServiceAccountId,
 		Scopes:                 c.Scopes,
-		credentials:            c.credentials,
 	}
 }
 
@@ -83,10 +81,6 @@ func (c *Config) clone() *Config {
 // It supports Service Account Key, Service Account Impersonation, and ADC.
 // If the credentials are already generated, it will return the cached credentials.
 func (c *Config) GenerateCredentials(ctx context.Context) (*google.Credentials, error) {
-	if c.credentials != nil {
-		return c.credentials, nil
-	}
-
 	var creds *google.Credentials
 	var err error
 
@@ -116,8 +110,6 @@ func (c *Config) GenerateCredentials(ctx context.Context) (*google.Credentials, 
 			)
 		}
 	}
-
-	c.credentials = creds
 
 	return creds, nil
 }
