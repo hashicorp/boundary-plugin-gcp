@@ -17,6 +17,19 @@ import (
 	"google.golang.org/grpc/status"
 )
 
+type Type int
+
+const (
+	// StaticGCP denotes the presence of an Private Key and Client Email.
+	StaticGCP Type = iota
+
+	// DynamicGCP denotes the presence of a Target Service Account Id.
+	DynamicGCP
+
+	// Unknown is a catch-all for everything else.
+	Unknown
+)
+
 // impersonateServiceAccount is a function variable that creates a TokenSource
 var impersonateServiceAccountFn = func(
 	ctx context.Context,
@@ -40,6 +53,7 @@ type Config struct {
 	ProjectId              string
 	PrivateKey             string
 	PrivateKeyId           string
+	Zone                   string
 	ClientEmail            string
 	TargetServiceAccountId string
 	Scopes                 []string
@@ -164,6 +178,23 @@ func (c *Config) credentialsFromADC(ctx context.Context) (*google.Credentials, e
 		return nil, status.Errorf(codes.Internal, "failed to find default credentials: %v", err)
 	}
 	return creds, nil
+}
+
+// GetType returns the credential type based on the given
+// current config.
+func (c *Config) GetType() Type {
+	if c == nil {
+		return Unknown
+	}
+
+	switch {
+	case len(c.TargetServiceAccountId) > 0 && len(c.PrivateKey) > 0 && len(c.ClientEmail) > 0:
+		return DynamicGCP
+	case len(c.PrivateKey) > 0 && len(c.ClientEmail) > 0:
+		return StaticGCP
+	default:
+		return Unknown
+	}
 }
 
 // impersonateServiceAccount impersonates the service account.

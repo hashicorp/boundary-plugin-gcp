@@ -9,12 +9,15 @@ import (
 	"path/filepath"
 	"testing"
 
+	"cloud.google.com/go/compute/apiv1/computepb"
 	cred "github.com/hashicorp/boundary-plugin-gcp/internal/credential"
 	"github.com/hashicorp/boundary/sdk/pbs/controller/api/resources/hostcatalogs"
 	"github.com/hashicorp/boundary/sdk/pbs/controller/api/resources/hostsets"
 	pb "github.com/hashicorp/boundary/sdk/pbs/plugin"
 	"github.com/hashicorp/go-secure-stdlib/parseutil"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/api/option"
+
 	"google.golang.org/protobuf/types/known/structpb"
 )
 
@@ -295,32 +298,15 @@ func TestListHosts(t *testing.T) {
 }
 
 func TestCreateCatalog(t *testing.T) {
-	t.Skip("TODO: this needs a secrets file to run - maybe only manually?")
 	ctx := context.Background()
-	p := &HostPlugin{}
-
-	wd, err := os.Getwd()
-	require.NoError(t, err)
-	require.NotEmpty(t, wd)
-	project, err := parseutil.ParsePath("file://" + filepath.Join(wd, "secrets", "project"))
-	require.NoError(t, err)
-	zone, err := parseutil.ParsePath("file://" + filepath.Join(wd, "secrets", "zone"))
-	require.NoError(t, err)
-
-	hostCatalogAttributes := &hostcatalogs.HostCatalog_Attributes{
-		Attributes: wrapMap(t, map[string]interface{}{
-			cred.ConstProjectId: project,
-			cred.ConstZone:      zone,
-		}),
-	}
-
-	require.NoError(t, err)
 
 	cases := []struct {
-		name        string
-		req         *pb.OnCreateCatalogRequest
-		expected    *pb.HostCatalogPersisted
-		expectedErr string
+		name                  string
+		req                   *pb.OnCreateCatalogRequest
+		expected              *pb.HostCatalogPersisted
+		listInstancesResponse *computepb.InstanceList
+		expectedErr           string
+		expectedRsp           *pb.OnCreateCatalogResponse
 	}{
 		{
 			name:        "nil catalog",
@@ -343,34 +329,77 @@ func TestCreateCatalog(t *testing.T) {
 					},
 				},
 			},
-			expectedErr: "attributes.project: missing required value \"project\"",
+			expectedErr: "attributes.project_id: missing required value \"project_id\"",
 		},
 		{
-			name: "do not persist secrets, use gcloud application default creds",
+			name: "using static credentials",
 			req: &pb.OnCreateCatalogRequest{
 				Catalog: &hostcatalogs.HostCatalog{
-					Attrs: hostCatalogAttributes,
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								cred.ConstProjectId:                 structpb.NewStringValue("test-project"),
+								cred.ConstZone:                      structpb.NewStringValue("us-central1-a"),
+								cred.ConstClientEmail:               structpb.NewStringValue("test-client-email@email.com"),
+								cred.ConstDisableCredentialRotation: structpb.NewBoolValue(true),
+							},
+						},
+					},
+					Secrets: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							cred.ConstPrivateKeyId: structpb.NewStringValue("test-private-key-id"),
+							cred.ConstPrivateKey:   structpb.NewStringValue("test-private-key"),
+						},
+					},
 				},
 			},
-			expected: &pb.HostCatalogPersisted{
-				Secrets: nil,
+			expectedRsp: &pb.OnCreateCatalogResponse{Persisted: &pb.HostCatalogPersisted{Secrets: &structpb.Struct{}}},
+			listInstancesResponse: &computepb.InstanceList{
+				Items: []*computepb.Instance{
+					{
+						Name: pointer("boundary-0"),
+						NetworkInterfaces: []*computepb.NetworkInterface{
+							{
+								AccessConfigs: []*computepb.AccessConfig{
+									{
+										NatIP:        pointer("102.1.1.1"),
+										ExternalIpv6: pointer("2001:db8::1"),
+									},
+								},
+							},
+						},
+					},
+				},
 			},
 		},
 	}
 
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			require := require.New(t)
+
+			testInstancesServer := &testServer{
+				listInstancesResponse: tc.listInstancesResponse,
+			}
+
+			testInstancesServer.start()
+			defer testInstancesServer.stop()
+
+			p := &HostPlugin{
+				testGCPClientOpts: []option.ClientOption{
+					option.WithoutAuthentication(),
+					option.WithEndpoint(testInstancesServer.server.URL),
+					option.WithTokenSource(nil),
+				},
+			}
 
 			actual, err := p.OnCreateCatalog(ctx, tc.req)
 			if tc.expectedErr != "" {
 				require.Contains(err.Error(), tc.expectedErr)
 				return
 			}
-
 			require.NoError(err)
-			require.Nil(actual.GetPersisted().Secrets)
+			require.NotNil(actual.GetPersisted().Secrets)
 		})
 	}
 }
@@ -443,7 +472,6 @@ func TestUpdateCatalog(t *testing.T) {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			require := require.New(t)
-
 			actual, err := p.OnCreateCatalog(ctx, tc.req)
 			if tc.expectedErr != "" {
 				require.Contains(err.Error(), tc.expectedErr)

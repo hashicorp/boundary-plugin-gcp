@@ -28,3 +28,14 @@ func NewPersistedState(opt ...Option) (*PersistedState, error) {
 	s.CredsLastRotatedTime = opts.WithCredsLastRotatedTime
 	return s, nil
 }
+
+// ToMap returns a map of the credentials stored in the persisted state.
+// ToMap will return a map for long-term credentials with following keys:
+// private_key_id, private_key & creds_last_rotated_time
+func (s *PersistedState) ToMap() map[string]any {
+	return map[string]any{
+		ConstPrivateKey:           s.CredentialsConfig.PrivateKey,
+		ConstPrivateKeyId:         s.CredentialsConfig.PrivateKeyId,
+		ConstCredsLastRotatedTime: s.CredsLastRotatedTime.Format(time.RFC3339Nano),
+	}
+}

@@ -72,3 +72,61 @@ func GetCredentialAttributes(in *structpb.Struct) (*CredentialAttributes, error)
 		TargetServiceAccountId:    targetServiceAccountId,
 	}, nil
 }
+
+// GetCredentialsConfig parses values out of a protobuf struct secrets and returns a
+// Config used for configuring an GCP session. An status error is returned
+// with an InvalidArgument code if any unrecognized fields are found in the protobuf
+// struct input.
+func GetCredentialsConfig(secrets *structpb.Struct, attrs *CredentialAttributes) (*Config, error) {
+	// initialize secrets if it is nil
+	// secrets can be nil because static credentials are optional
+	if secrets == nil {
+		secrets = &structpb.Struct{
+			Fields: make(map[string]*structpb.Value),
+		}
+	}
+
+	unknownFields := values.StructFields(secrets)
+	badFields := make(map[string]string)
+
+	privateKeyId, err := values.GetStringValue(secrets, ConstPrivateKeyId, false)
+	if err != nil {
+		badFields[fmt.Sprintf("secrets.%s", ConstPrivateKeyId)] = err.Error()
+	}
+	delete(unknownFields, ConstPrivateKeyId)
+
+	privateKey, err := values.GetStringValue(secrets, ConstPrivateKey, false)
+	if err != nil {
+		badFields[fmt.Sprintf("secrets.%s", ConstPrivateKey)] = err.Error()
+	}
+	delete(unknownFields, ConstPrivateKey)
+
+	for s := range unknownFields {
+		badFields[fmt.Sprintf("secrets.%s", s)] = "unrecognized field"
+	}
+
+	switch {
+	// dynamic credentials requires the target service account id, cl and private key
+	case attrs.TargetServiceAccountId != "" && (privateKey == "" || attrs.ClientEmail == ""):
+		badFields[fmt.Sprintf("secrets.%s", ConstPrivateKey)] = "must not be empty when target service account id is set"
+		badFields[fmt.Sprintf("secrets.%s", ConstClientEmail)] = "must not be empty when target service account id is set"
+	// static credentials requires the private key and client email
+	case privateKey != "" && attrs.ClientEmail == "":
+		badFields[fmt.Sprintf("secrets.%s", ConstClientEmail)] = "must not be empty when private key is set"
+	case attrs.ClientEmail != "" && privateKey == "":
+		badFields[fmt.Sprintf("secrets.%s", ConstPrivateKey)] = "must not be empty when client email is set"
+	}
+
+	if len(badFields) > 0 {
+		return nil, errors.InvalidArgumentError("Error in the secrets provided", badFields)
+	}
+
+	return &Config{
+		ProjectId:              attrs.ProjectId,
+		ClientEmail:            attrs.ClientEmail,
+		Zone:                   attrs.Zone,
+		PrivateKey:             privateKey,
+		PrivateKeyId:           privateKeyId,
+		TargetServiceAccountId: attrs.TargetServiceAccountId,
+	}, nil
+}
