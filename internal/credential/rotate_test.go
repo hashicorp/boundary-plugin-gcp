@@ -6,8 +6,6 @@ package credential
 import (
 	"context"
 	"errors"
-	"fmt"
-	"net"
 	"testing"
 
 	"cloud.google.com/go/iam/admin/apiv1/adminpb"
@@ -19,7 +17,6 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
-	"google.golang.org/protobuf/types/known/emptypb"
 )
 
 func TestRotateServiceAccountKey(t *testing.T) {
@@ -106,10 +103,10 @@ func TestRotateServiceAccountKey(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gsrv := newGRPCServer()
+			gsrv := NewGRPCServer()
 			adminpb.RegisterIAMServer(gsrv.Server, testIAMAdminServer)
 			resourcemanagerpb.RegisterProjectsServer(gsrv.Server, testResourceServer)
-			addr, err := gsrv.serve()
+			addr, err := gsrv.Start()
 			require.NoError(t, err)
 
 			ctx := context.Background()
@@ -245,9 +242,9 @@ func TestValidateIamPermissions(t *testing.T) {
 			testResourceServer.testIamPermissionsResponse = tt.testIamResponse
 			testResourceServer.testIamPermissionsError = tt.testIamPermissionsError
 
-			gsrv := newGRPCServer()
+			gsrv := NewGRPCServer()
 			resourcemanagerpb.RegisterProjectsServer(gsrv.Server, testResourceServer)
-			addr, err := gsrv.serve()
+			addr, err := gsrv.Start()
 			require.NoError(t, err)
 
 			testOptions := []googleOption.ClientOption{
@@ -266,53 +263,4 @@ func TestValidateIamPermissions(t *testing.T) {
 			require.Equal(t, tt.expectedPermissions, permissions)
 		})
 	}
-}
-
-type testIAMAdminServer struct {
-	adminpb.UnimplementedIAMServer
-	testCreateServiceAccountKeyError error
-	testDeleteServiceAccountKeyError error
-}
-
-func (f *testIAMAdminServer) CreateServiceAccountKey(ctx context.Context, req *adminpb.CreateServiceAccountKeyRequest) (*adminpb.ServiceAccountKey, error) {
-	resp := &adminpb.ServiceAccountKey{
-		Name:           "projects/-/serviceAccounts/1234/keys/updated-private-key-id",
-		PrivateKeyData: []byte("updated-private-key"),
-	}
-	return resp, f.testCreateServiceAccountKeyError
-}
-
-func (f *testIAMAdminServer) DeleteServiceAccountKey(ctx context.Context, req *adminpb.DeleteServiceAccountKeyRequest) (*emptypb.Empty, error) {
-	return &emptypb.Empty{}, f.testDeleteServiceAccountKeyError
-}
-
-type testResourceServer struct {
-	resourcemanagerpb.UnimplementedProjectsServer
-	testIamPermissionsResponse *iampb.TestIamPermissionsResponse
-	testIamPermissionsError    error
-}
-
-func (f *testResourceServer) TestIamPermissions(context.Context, *iampb.TestIamPermissionsRequest) (*iampb.TestIamPermissionsResponse, error) {
-	return f.testIamPermissionsResponse, f.testIamPermissionsError
-}
-
-type grpcServer struct {
-	*grpc.Server
-}
-
-func newGRPCServer() *grpcServer {
-	return &grpcServer{Server: grpc.NewServer()}
-}
-
-func (s *grpcServer) serve() (string, error) {
-	l, err := net.Listen("tcp", "localhost:0")
-	if err != nil {
-		return "", fmt.Errorf("failed to listen: %v", err)
-	}
-	go func() {
-		if err := s.Serve(l); err != nil {
-			panic(err)
-		}
-	}()
-	return l.Addr().String(), nil
 }

@@ -17,6 +17,10 @@ import (
 	"google.golang.org/protobuf/types/known/structpb"
 )
 
+type Iterator interface {
+	Next() (*computepb.Instance, error)
+}
+
 type InstancesAPI interface {
 	List(ctx context.Context, req *computepb.ListInstancesRequest, opts ...gax.CallOption) *compute.InstanceIterator
 }
@@ -24,7 +28,11 @@ type InstancesAPI interface {
 type gcpCatalogPersistedState struct {
 	// CredentialsConfig is the configuration for the GCP credentials
 	*credential.PersistedState
+	// testInstancesAPIFunc provides a way to provide a factory for a mock Instances client
+	testInstancesAPIFunc instancesAPIFunc
 }
+
+type instancesAPIFunc func(...*credential.Config) (InstancesAPI, error)
 
 type gcpCatalogPersistedStateOption func(s *gcpCatalogPersistedState) error
 
@@ -35,6 +43,17 @@ func withCredentials(x *credential.PersistedState) gcpCatalogPersistedStateOptio
 		}
 
 		s.PersistedState = x
+		return nil
+	}
+}
+
+func withTestInstancesAPIFunc(f instancesAPIFunc) gcpCatalogPersistedStateOption {
+	return func(s *gcpCatalogPersistedState) error {
+		if s.testInstancesAPIFunc != nil {
+			return errors.New("test API function already set")
+		}
+
+		s.testInstancesAPIFunc = f
 		return nil
 	}
 }
@@ -64,6 +83,9 @@ func (s *gcpCatalogPersistedState) InstancesClient(
 	ctx context.Context,
 	opts ...option.ClientOption,
 ) (InstancesAPI, error) {
+	if s.testInstancesAPIFunc != nil {
+		return s.testInstancesAPIFunc(s.CredentialsConfig)
+	}
 	creds, err := s.CredentialsConfig.GenerateCredentials(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("error generation GCP credentials: %w", err)

@@ -10,6 +10,10 @@ import (
 	"testing"
 
 	"cloud.google.com/go/compute/apiv1/computepb"
+	"cloud.google.com/go/iam/admin/apiv1/adminpb"
+	"cloud.google.com/go/iam/apiv1/iampb"
+	"cloud.google.com/go/resourcemanager/apiv3/resourcemanagerpb"
+	"github.com/google/go-cmp/cmp"
 	cred "github.com/hashicorp/boundary-plugin-gcp/internal/credential"
 	"github.com/hashicorp/boundary/sdk/pbs/controller/api/resources/hostcatalogs"
 	"github.com/hashicorp/boundary/sdk/pbs/controller/api/resources/hostsets"
@@ -17,7 +21,10 @@ import (
 	"github.com/hashicorp/go-secure-stdlib/parseutil"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/api/option"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 
+	"google.golang.org/protobuf/testing/protocmp"
 	"google.golang.org/protobuf/types/known/structpb"
 )
 
@@ -301,12 +308,12 @@ func TestCreateCatalog(t *testing.T) {
 	ctx := context.Background()
 
 	cases := []struct {
-		name                  string
-		req                   *pb.OnCreateCatalogRequest
-		expected              *pb.HostCatalogPersisted
-		listInstancesResponse *computepb.InstanceList
-		expectedErr           string
-		expectedRsp           *pb.OnCreateCatalogResponse
+		name        string
+		req         *pb.OnCreateCatalogRequest
+		expected    *pb.HostCatalogPersisted
+		catalogOpts []gcpCatalogPersistedStateOption
+		expectedErr string
+		expectedRsp *pb.OnCreateCatalogResponse
 	}{
 		{
 			name:        "nil catalog",
@@ -353,20 +360,132 @@ func TestCreateCatalog(t *testing.T) {
 					},
 				},
 			},
-			expectedRsp: &pb.OnCreateCatalogResponse{Persisted: &pb.HostCatalogPersisted{Secrets: &structpb.Struct{}}},
-			listInstancesResponse: &computepb.InstanceList{
-				Items: []*computepb.Instance{
-					{
-						Name: pointer("boundary-0"),
-						NetworkInterfaces: []*computepb.NetworkInterface{
+			catalogOpts: []gcpCatalogPersistedStateOption{
+				withTestInstancesAPIFunc(newTestMockInstances(ctx,
+					nil,
+					testMockInstancesWithListInstancesOutput(&computepb.InstanceList{
+						Items: []*computepb.Instance{
 							{
-								AccessConfigs: []*computepb.AccessConfig{
+								Name: pointer("boundary-0"),
+								NetworkInterfaces: []*computepb.NetworkInterface{
 									{
-										NatIP:        pointer("102.1.1.1"),
-										ExternalIpv6: pointer("2001:db8::1"),
+										AccessConfigs: []*computepb.AccessConfig{
+											{
+												NatIP:        pointer("102.1.1.1"),
+												ExternalIpv6: pointer("2001:db8::1"),
+											},
+										},
 									},
 								},
 							},
+						},
+					}),
+					testMockInstancesWithListInstancesError(nil),
+				)),
+			},
+			expectedRsp: &pb.OnCreateCatalogResponse{
+				Persisted: &pb.HostCatalogPersisted{
+					Secrets: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							cred.ConstPrivateKey:   structpb.NewStringValue("test-private-key"),
+							cred.ConstPrivateKeyId: structpb.NewStringValue("test-private-key-id"),
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "using rotated static credentials",
+			req: &pb.OnCreateCatalogRequest{
+				Catalog: &hostcatalogs.HostCatalog{
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								cred.ConstProjectId:                 structpb.NewStringValue("test-project"),
+								cred.ConstZone:                      structpb.NewStringValue("us-central1-a"),
+								cred.ConstClientEmail:               structpb.NewStringValue("test-client-email@email.com"),
+								cred.ConstDisableCredentialRotation: structpb.NewBoolValue(false),
+							},
+						},
+					},
+					Secrets: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							cred.ConstPrivateKeyId: structpb.NewStringValue("test-private-key-id"),
+							cred.ConstPrivateKey:   structpb.NewStringValue("test-private-key"),
+						},
+					},
+				},
+			},
+			catalogOpts: []gcpCatalogPersistedStateOption{
+				withTestInstancesAPIFunc(newTestMockInstances(ctx,
+					nil,
+					testMockInstancesWithListInstancesOutput(&computepb.InstanceList{
+						Items: []*computepb.Instance{
+							{
+								Name: pointer("boundary-0"),
+								NetworkInterfaces: []*computepb.NetworkInterface{
+									{
+										AccessConfigs: []*computepb.AccessConfig{
+											{
+												NatIP:        pointer("102.1.1.1"),
+												ExternalIpv6: pointer("2001:db8::1"),
+											},
+										},
+									},
+								},
+							},
+						},
+					}),
+					testMockInstancesWithListInstancesError(nil),
+				)),
+			},
+			expectedRsp: &pb.OnCreateCatalogResponse{
+				Persisted: &pb.HostCatalogPersisted{
+					Secrets: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							cred.ConstPrivateKey:   structpb.NewStringValue("updated-private-key"),
+							cred.ConstPrivateKeyId: structpb.NewStringValue("updated-private-key-id"),
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "using impersonated credentials",
+			req: &pb.OnCreateCatalogRequest{
+				Catalog: &hostcatalogs.HostCatalog{
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								cred.ConstProjectId:                 structpb.NewStringValue("test-project"),
+								cred.ConstZone:                      structpb.NewStringValue("us-central1-a"),
+								cred.ConstClientEmail:               structpb.NewStringValue("test-client-email@email.com"),
+								cred.ConstTargetServiceAccountID:    structpb.NewStringValue("test-target-service-account-id"),
+								cred.ConstDisableCredentialRotation: structpb.NewBoolValue(true),
+							},
+						},
+					},
+					Secrets: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							cred.ConstPrivateKeyId: structpb.NewStringValue("test-private-key-id"),
+							cred.ConstPrivateKey:   structpb.NewStringValue("test-private-key"),
+						},
+					},
+				},
+			},
+			catalogOpts: []gcpCatalogPersistedStateOption{
+				withTestInstancesAPIFunc(newTestMockInstances(ctx,
+					nil,
+					testMockInstancesWithListInstancesOutput(&computepb.InstanceList{}),
+					testMockInstancesWithListInstancesError(nil),
+				)),
+			},
+			expectedRsp: &pb.OnCreateCatalogResponse{
+				Persisted: &pb.HostCatalogPersisted{
+					Secrets: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							cred.ConstPrivateKey:   structpb.NewStringValue("test-private-key"),
+							cred.ConstPrivateKeyId: structpb.NewStringValue("test-private-key-id"),
 						},
 					},
 				},
@@ -378,19 +497,29 @@ func TestCreateCatalog(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			require := require.New(t)
 
-			testInstancesServer := &testServer{
-				listInstancesResponse: tc.listInstancesResponse,
-			}
+			testIAMAdminServer := cred.NewTestIAMAdminServer(nil, nil)
+			testResourceServer := cred.NewTestResourceServer(&iampb.TestIamPermissionsResponse{
+				Permissions: []string{
+					cred.ComputeInstancesListPermission,
+					cred.IAMServiceAccountKeysCreatePermission,
+					cred.IAMServiceAccountKeysDeletePermission,
+				},
+			}, nil)
 
-			testInstancesServer.start()
-			defer testInstancesServer.stop()
+			gsrv := cred.NewGRPCServer()
+			adminpb.RegisterIAMServer(gsrv.Server, testIAMAdminServer)
+			resourcemanagerpb.RegisterProjectsServer(gsrv.Server, testResourceServer)
+			addr, err := gsrv.Start()
+			require.NoError(err)
 
 			p := &HostPlugin{
 				testGCPClientOpts: []option.ClientOption{
+					option.WithEndpoint(addr),
 					option.WithoutAuthentication(),
-					option.WithEndpoint(testInstancesServer.server.URL),
+					option.WithGRPCDialOption(grpc.WithTransportCredentials(insecure.NewCredentials())),
 					option.WithTokenSource(nil),
 				},
+				testCatalogStateOpts: tc.catalogOpts,
 			}
 
 			actual, err := p.OnCreateCatalog(ctx, tc.req)
@@ -399,7 +528,8 @@ func TestCreateCatalog(t *testing.T) {
 				return
 			}
 			require.NoError(err)
-			require.NotNil(actual.GetPersisted().Secrets)
+			delete(actual.GetPersisted().GetSecrets().GetFields(), cred.ConstCredsLastRotatedTime)
+			require.Empty(cmp.Diff(tc.expectedRsp, actual, protocmp.Transform()))
 		})
 	}
 }

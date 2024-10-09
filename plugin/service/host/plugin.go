@@ -26,6 +26,8 @@ type HostPlugin struct {
 	pb.UnimplementedHostPluginServiceServer
 	// testGCPClientOpts are passed in to the GCP client to control test behavior
 	testGCPClientOpts []option.ClientOption
+	// testCatalogStateOpts are passed in to the stored state to control test behavior
+	testCatalogStateOpts []gcpCatalogPersistedStateOption
 }
 
 var (
@@ -69,14 +71,15 @@ func (p *HostPlugin) OnCreateCatalog(ctx context.Context, req *pb.OnCreateCatalo
 	}
 
 	if credState.CredentialsConfig.GetType() != credential.Unknown && !catalogAttributes.DisableCredentialRotation {
-		if err := credState.CredentialsConfig.RotateServiceAccountKey(ctx, permissions); err != nil {
+		if err := credState.CredentialsConfig.RotateServiceAccountKey(ctx, permissions, p.testGCPClientOpts...); err != nil {
 			return nil, err
 		}
 	}
 
-	catalogState, err := newGCPCatalogPersistedState([]gcpCatalogPersistedStateOption{
-		withCredentials(credState),
-	}...,
+	catalogState, err := newGCPCatalogPersistedState(
+		append([]gcpCatalogPersistedStateOption{
+			withCredentials(credState),
+		}, p.testCatalogStateOpts...)...,
 	)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "error setting up persisted state: %s", err)
