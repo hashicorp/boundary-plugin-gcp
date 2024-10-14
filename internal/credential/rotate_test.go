@@ -264,3 +264,100 @@ func TestValidateIamPermissions(t *testing.T) {
 		})
 	}
 }
+func TestDeletePrivateKey(t *testing.T) {
+	testIAMAdminServer := &testIAMAdminServer{}
+
+	tests := []struct {
+		name          string
+		config        *Config
+		setup         func()
+		expectedError error
+	}{
+		{
+			name: "PrivateKey is empty",
+			config: &Config{
+				PrivateKey: "",
+			},
+			expectedError: status.Error(codes.InvalidArgument, "cannot delete credentials when private key is not set"),
+		},
+		{
+			name: "PrivateKeyId is empty",
+			config: &Config{
+				PrivateKey:   "some-private-key",
+				PrivateKeyId: "",
+			},
+			expectedError: status.Error(codes.InvalidArgument, "cannot delete credentials when private key ID is not set"),
+		},
+		{
+			name: "ClientEmail is empty",
+			config: &Config{
+				PrivateKey:   "some-private-key",
+				PrivateKeyId: "some-private-key-id",
+				ClientEmail:  "",
+			},
+			expectedError: status.Error(codes.InvalidArgument, "cannot delete credentials when client email is not set"),
+		},
+		{
+			name: "GenerateCredentials returns error",
+			config: &Config{
+				PrivateKey:             "some-private-key",
+				PrivateKeyId:           "some-private-key-id",
+				ClientEmail:            "client@example.com",
+				TargetServiceAccountId: "test-service-account-id",
+			},
+			expectedError: status.Errorf(codes.Unauthenticated, "error generating credentials"),
+		},
+		{
+			name: "DeleteServiceAccountKey returns error",
+			config: &Config{
+				PrivateKey:   "some-private-key",
+				PrivateKeyId: "some-private-key-id",
+				ClientEmail:  "client@example.com",
+			},
+			setup: func() {
+				testIAMAdminServer.testDeleteServiceAccountKeyError = errors.New("delete key error")
+			},
+			expectedError: status.Errorf(codes.Internal, "error deleting service account key"),
+		},
+		{
+			name: "Successful deletion",
+			config: &Config{
+				PrivateKey:   "some-private-key",
+				PrivateKeyId: "some-private-key-id",
+				ClientEmail:  "client@example.com",
+			},
+			setup: func() {
+				testIAMAdminServer.testDeleteServiceAccountKeyError = nil
+			},
+			expectedError: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gsrv := NewGRPCServer()
+			adminpb.RegisterIAMServer(gsrv.Server, testIAMAdminServer)
+			addr, err := gsrv.Start()
+			require.NoError(t, err)
+
+			ctx := context.Background()
+			if tt.setup != nil {
+				tt.setup()
+			}
+			testOptions := []googleOption.ClientOption{
+				googleOption.WithEndpoint(addr),
+				googleOption.WithoutAuthentication(),
+				googleOption.WithGRPCDialOption(grpc.WithTransportCredentials(insecure.NewCredentials())),
+				googleOption.WithTokenSource(nil),
+			}
+
+			err = tt.config.DeletePrivateKey(ctx, testOptions...)
+			if tt.expectedError != nil {
+				require.ErrorContains(t, err, tt.expectedError.Error())
+				return
+			}
+
+			require.NoError(t, err)
+		})
+	}
+}

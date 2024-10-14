@@ -9,8 +9,15 @@ import (
 
 // options = how options are represented
 type Options struct {
-	WithCredentialsConfig    *Config
-	WithCredsLastRotatedTime time.Time
+	WithCredentialsConfig      *Config
+	WithCredsLastRotatedTime   time.Time
+	WithClientEmail            string
+	WithProjectId              string
+	WithTargetServiceAccountId string
+	WithZone                   string
+	WithPrivateKeyId           string
+	WithPrivateKey             string
+	WithScopes                 []string
 }
 
 // getOpts - iterate the inbound Options and return a struct
@@ -45,6 +52,62 @@ func WithCredentialsConfig(c *Config) Option {
 func WithCredsLastRotatedTime(t time.Time) Option {
 	return func(o *Options) error {
 		o.WithCredsLastRotatedTime = t
+		return nil
+	}
+}
+
+// WithClientEmail - set the client email
+func WithClientEmail(email string) Option {
+	return func(o *Options) error {
+		o.WithClientEmail = email
+		return nil
+	}
+}
+
+// WithProjectId - set the project ID
+func WithProjectId(id string) Option {
+	return func(o *Options) error {
+		o.WithProjectId = id
+		return nil
+	}
+}
+
+// WithTargetServiceAccountId - set the target service account ID
+func WithTargetServiceAccountId(id string) Option {
+	return func(o *Options) error {
+		o.WithTargetServiceAccountId = id
+		return nil
+	}
+}
+
+// WithZone - set the zone
+func WithZone(zone string) Option {
+	return func(o *Options) error {
+		o.WithZone = zone
+		return nil
+	}
+}
+
+// WithPrivateKeyId - set the private key ID
+func WithPrivateKeyId(id string) Option {
+	return func(o *Options) error {
+		o.WithPrivateKeyId = id
+		return nil
+	}
+}
+
+// WithPrivateKey - set the private key
+func WithPrivateKey(key string) Option {
+	return func(o *Options) error {
+		o.WithPrivateKey = key
+		return nil
+	}
+}
+
+// WithScopes - set the scopes
+func WithScopes(scopes []string) Option {
+	return func(o *Options) error {
+		o.WithScopes = scopes
 		return nil
 	}
 }
