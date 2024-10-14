@@ -78,7 +78,6 @@ func TestNewGCPCredentialPersistedState(t *testing.T) {
 		})
 	}
 }
-
 func TestPersistedStateFromProto(t *testing.T) {
 	staticTime := time.Now()
 
