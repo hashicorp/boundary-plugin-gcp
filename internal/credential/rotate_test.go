@@ -317,7 +317,7 @@ func TestDeletePrivateKey(t *testing.T) {
 			setup: func() {
 				testIAMAdminServer.testDeleteServiceAccountKeyError = errors.New("delete key error")
 			},
-			expectedError: status.Errorf(codes.Internal, "error deleting service account key"),
+			expectedError: status.Errorf(codes.Unknown, "error deleting service account key"),
 		},
 		{
 			name: "Successful deletion",

@@ -234,8 +234,37 @@ func (p *HostPlugin) OnDeleteCatalog(ctx context.Context, req *pb.OnDeleteCatalo
 		return nil, status.Error(codes.InvalidArgument, "new catalog missing attributes")
 	}
 
-	if _, err := getCatalogAttributes(attrs); err != nil {
+	catalogAttributes, err := getCatalogAttributes(attrs)
+	if err != nil {
 		return nil, err
+	}
+
+	credState, err := credential.PersistedStateFromProto(
+		req.GetPersisted().GetSecrets(),
+		catalogAttributes.CredentialAttributes)
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "error getting persisted state from proto: %s", err)
+	}
+
+	_, err = newGCPCatalogPersistedState(
+		append([]gcpCatalogPersistedStateOption{
+			withCredentials(credState),
+		}, p.testCatalogStateOpts...)...,
+	)
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "error loading persisted state: %s", err)
+	}
+
+	// try to delete static credentials for dynamic and static credentials
+	if credState.CredentialsConfig.GetType() != credential.Unknown {
+		if !credState.CredsLastRotatedTime.IsZero() {
+			// Delete old/existing credentials. This is done with the same
+			// credentials to ensure that it has the proper permissions to do
+			// it.
+			if err := credState.DeleteCreds(ctx, p.testGCPClientOpts...); err != nil {
+				return nil, err
+			}
+		}
 	}
 
 	return &pb.OnDeleteCatalogResponse{}, nil
