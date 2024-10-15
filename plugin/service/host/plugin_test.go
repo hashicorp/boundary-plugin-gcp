@@ -857,3 +857,113 @@ func TestUpdateSet(t *testing.T) {
 		})
 	}
 }
+
+func TestNormalizeSetData(t *testing.T) {
+	ctx := context.Background()
+	p := &HostPlugin{}
+
+	cases := []struct {
+		name        string
+		req         *pb.NormalizeSetDataRequest
+		expectedRsp *pb.NormalizeSetDataResponse
+	}{
+		{
+			name: "nil attributes",
+			req:  &pb.NormalizeSetDataRequest{},
+			expectedRsp: &pb.NormalizeSetDataResponse{
+				Attributes: nil,
+			},
+		},
+		{
+			name: "nil filters",
+			req: &pb.NormalizeSetDataRequest{
+				Attributes: &structpb.Struct{
+					Fields: map[string]*structpb.Value{},
+				},
+			},
+			expectedRsp: &pb.NormalizeSetDataResponse{
+				Attributes: &structpb.Struct{
+					Fields: map[string]*structpb.Value{},
+				},
+			},
+		},
+		{
+			name: "filters not a string",
+			req: &pb.NormalizeSetDataRequest{
+				Attributes: &structpb.Struct{
+					Fields: map[string]*structpb.Value{
+						"filters": structpb.NewListValue(&structpb.ListValue{
+							Values: []*structpb.Value{
+								structpb.NewStringValue("status = RUNNING"),
+							},
+						}),
+					},
+				},
+			},
+			expectedRsp: &pb.NormalizeSetDataResponse{
+				Attributes: &structpb.Struct{
+					Fields: map[string]*structpb.Value{
+						"filters": structpb.NewListValue(&structpb.ListValue{
+							Values: []*structpb.Value{
+								structpb.NewStringValue("status = RUNNING"),
+							},
+						}),
+					},
+				},
+			},
+		},
+		{
+			name: "filters is a string",
+			req: &pb.NormalizeSetDataRequest{
+				Attributes: &structpb.Struct{
+					Fields: map[string]*structpb.Value{
+						"filters": structpb.NewStringValue("status = RUNNING"),
+					},
+				},
+			},
+			expectedRsp: &pb.NormalizeSetDataResponse{
+				Attributes: &structpb.Struct{
+					Fields: map[string]*structpb.Value{
+						"filters": structpb.NewListValue(&structpb.ListValue{
+							Values: []*structpb.Value{
+								structpb.NewStringValue("status = RUNNING"),
+							},
+						}),
+					},
+				},
+			},
+		},
+		{
+			name: "filters with multiple values",
+			req: &pb.NormalizeSetDataRequest{
+				Attributes: &structpb.Struct{
+					Fields: map[string]*structpb.Value{
+						"filters": structpb.NewStringValue(`(cpuPlatform = "Intel Skylake") OR (cpuPlatform = "Intel Broadwell") AND (scheduling.automaticRestart = true)`),
+					},
+				},
+			},
+			expectedRsp: &pb.NormalizeSetDataResponse{
+				Attributes: &structpb.Struct{
+					Fields: map[string]*structpb.Value{
+						"filters": structpb.NewListValue(&structpb.ListValue{
+							Values: []*structpb.Value{
+								structpb.NewStringValue(`(cpuPlatform = "Intel Skylake") OR (cpuPlatform = "Intel Broadwell") AND (scheduling.automaticRestart = true)`),
+							},
+						}),
+					},
+				},
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			require := require.New(t)
+
+			actual, err := p.NormalizeSetData(ctx, tc.req)
+			require.NoError(err)
+			require.Empty(cmp.Diff(tc.expectedRsp, actual, protocmp.Transform()))
+		})
+	}
+}
