@@ -141,6 +141,12 @@ func (p *HostPlugin) OnDeleteCatalog(ctx context.Context, req *pb.OnDeleteCatalo
 	return &pb.OnDeleteCatalogResponse{}, nil
 }
 
+// NormalizeCatalogData is called to normalize the catalog data.
+func (p *HostPlugin) NormalizeCatalogData(ctx context.Context, req *pb.NormalizeCatalogDataRequest) (*pb.NormalizeCatalogDataResponse, error) {
+	// No-op, Catalog fields do not require any normalization
+	return &pb.NormalizeCatalogDataResponse{Attributes: req.Attributes}, nil
+}
+
 // NormalizeSetData currently ensures that "filters" is an array value, even
 // though it's accepted as a string value for CLI UX reasons
 func (p *HostPlugin) NormalizeSetData(ctx context.Context, req *pb.NormalizeSetDataRequest) (*pb.NormalizeSetDataResponse, error) {
