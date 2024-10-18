@@ -17,19 +17,6 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-type Type int
-
-const (
-	// StaticGCP denotes the presence of an Private Key and Client Email.
-	StaticGCP Type = iota
-
-	// DynamicGCP denotes the presence of a Target Service Account Id.
-	DynamicGCP
-
-	// Unknown is a catch-all for everything else.
-	Unknown
-)
-
 // impersonateServiceAccount is a function variable that creates a TokenSource
 var impersonateServiceAccountFn = func(
 	ctx context.Context,
