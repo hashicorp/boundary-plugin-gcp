@@ -6,6 +6,8 @@ package host
 import (
 	"context"
 	"fmt"
+	"regexp"
+	"strings"
 
 	compute "cloud.google.com/go/compute/apiv1"
 	computepb "cloud.google.com/go/compute/apiv1/computepb"
@@ -87,7 +89,7 @@ func (p *HostPlugin) OnCreateCatalog(ctx context.Context, req *pb.OnCreateCatalo
 		return nil, status.Errorf(codes.Internal, "error setting up persisted state: %s", err)
 	}
 
-	if st := dryRunValidation(ctx, catalogState, p.testGCPClientOpts...); st != nil {
+	if st := dryRunValidation(ctx, catalogState, nil, p.testGCPClientOpts...); st != nil {
 		return nil, st.Err()
 	}
 
@@ -158,7 +160,7 @@ func (p *HostPlugin) OnUpdateCatalog(ctx context.Context, req *pb.OnUpdateCatalo
 		if err != nil {
 			return nil, status.Errorf(codes.Internal, "error setting up persisted state: %s", err)
 		}
-		if st := dryRunValidation(ctx, newCatalogState); st != nil {
+		if st := dryRunValidation(ctx, newCatalogState, nil, p.testGCPClientOpts...); st != nil {
 			return nil, st.Err()
 		}
 
@@ -210,7 +212,7 @@ func (p *HostPlugin) OnUpdateCatalog(ctx context.Context, req *pb.OnUpdateCatalo
 	}
 
 	// perform dry run to ensure we can interact with GCP as expected.
-	if st := dryRunValidation(ctx, catalogState, p.testGCPClientOpts...); st != nil {
+	if st := dryRunValidation(ctx, catalogState, nil, p.testGCPClientOpts...); st != nil {
 		return nil, st.Err()
 	}
 
@@ -309,10 +311,64 @@ func (p *HostPlugin) NormalizeSetData(ctx context.Context, req *pb.NormalizeSetD
 }
 
 // OnCreateSet is called when a dynamic host set is created.
-func (p *HostPlugin) OnCreateSet(_ context.Context, req *pb.OnCreateSetRequest) (*pb.OnCreateSetResponse, error) {
+func (p *HostPlugin) OnCreateSet(ctx context.Context, req *pb.OnCreateSetRequest) (*pb.OnCreateSetResponse, error) {
+	catalog := req.GetCatalog()
+	if catalog == nil {
+		return nil, status.Error(codes.InvalidArgument, "catalog is required")
+	}
+
+	attrs := catalog.GetAttributes()
+	if attrs == nil {
+		return nil, status.Error(codes.InvalidArgument, "catalog attributes are required")
+	}
+
+	catalogAttributes, err := getCatalogAttributes(attrs)
+	if err != nil {
+		return nil, err
+	}
+
+	credState, err := credential.PersistedStateFromProto(
+		req.GetPersisted().GetSecrets(),
+		catalogAttributes.CredentialAttributes)
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "error getting persisted state from proto: %s", err)
+	}
+
+	catalogState, err := newGCPCatalogPersistedState(
+		append([]gcpCatalogPersistedStateOption{
+			withCredentials(credState),
+		}, p.testCatalogStateOpts...)...,
+	)
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "error loading persisted state: %s", err)
+	}
+
+	set := req.GetSet()
+	if set == nil {
+		return nil, status.Error(codes.InvalidArgument, "set is required")
+	}
 	if err := validateSet(req.GetSet()); err != nil {
 		return nil, err
 	}
+
+	if set.GetAttributes() == nil {
+		return nil, status.Error(codes.InvalidArgument, "set attributes are required")
+	}
+	setAttrs, err := getSetAttributes(set.GetAttributes())
+	if err != nil {
+		return nil, err
+	}
+
+	listInstanceFilters, err := buildFilters(setAttrs)
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "error building filters: %s", err)
+	}
+
+	// perform dry run to ensure we can interact with GCP as expected.
+	if st := dryRunValidation(ctx, catalogState, listInstanceFilters, p.testGCPClientOpts...); st != nil {
+		return nil, st.Err()
+	}
+
 	return &pb.OnCreateSetResponse{}, nil
 }
 
@@ -485,14 +541,14 @@ func validateSet(s *hostsets.HostSet) error {
 	if instanceGroupSet && filterSet {
 		badFields["attributes"] = "must set instance group or filter, cannot set both"
 	} else if instanceGroupSet && len(attrs.InstanceGroup) == 0 {
-		badFields[fmt.Sprintf("attributes.%s", ConstInstanceGroup)] = "must not be empty."
-	} else if filterSet && len(attrs.Filter) == 0 {
-		badFields[fmt.Sprintf("attributes.%s", ConstListInstancesFilter)] = "must not be empty."
+		badFields[fmt.Sprintf("attributes.%s", ConstInstanceGroup)] = "must not be empty"
+	} else if filterSet && len(attrs.Filters) == 0 {
+		badFields[fmt.Sprintf("attributes.%s", ConstListInstancesFilter)] = "must not be empty"
 	}
 
 	for f := range attrMap {
 		if _, ok := allowedSetFields[f]; !ok {
-			badFields[fmt.Sprintf("attributes.%s", f)] = "Unrecognized field."
+			badFields[fmt.Sprintf("attributes.%s", f)] = "unrecognized field"
 		}
 	}
 
@@ -507,6 +563,7 @@ func validateSet(s *hostsets.HostSet) error {
 func dryRunValidation(
 	ctx context.Context,
 	state *gcpCatalogPersistedState,
+	listFilters []string,
 	clientOptions ...option.ClientOption,
 ) *status.Status {
 	if state == nil {
@@ -518,9 +575,15 @@ func dryRunValidation(
 		return status.New(codes.InvalidArgument, fmt.Sprintf("error getting instances client: %s", err))
 	}
 
+	var filters string
+	if len(listFilters) > 0 {
+		filters = strings.Join(listFilters, " ")
+	}
+
 	it := instancesClient.List(ctx, &computepb.ListInstancesRequest{
 		Project: state.CredentialsConfig.ProjectId,
 		Zone:    state.CredentialsConfig.Zone,
+		Filter:  &filters,
 	})
 
 	_, err = it.Next()
@@ -529,4 +592,63 @@ func dryRunValidation(
 	}
 
 	return nil
+}
+
+// buildFilters constructs a list of filters to be used in a ListInstancesRequest.
+// If no filters are provided, a default filter is added to filter on running instances.
+func buildFilters(attrs *SetAttributes) ([]string, error) {
+	var filters []string
+	var foundStateFilter bool
+	// If filters are provided, validate them
+	if len(attrs.Filters) != 0 {
+		for _, filterAttr := range attrs.Filters {
+			key, operator, value, valid := extractFilterValue(filterAttr)
+			switch {
+			case !valid:
+				return nil, fmt.Errorf("filter %q contains invalid operator: %s. Use one of =, !=, >, <, <=, >=, :, eq, ne", filterAttr, operator)
+			case len(strings.TrimSpace(key)) == 0:
+				return nil, fmt.Errorf("filter %q contains an empty filter key", filterAttr)
+			case len(strings.TrimSpace(value)) == 0:
+				return nil, fmt.Errorf("filter %q contains an empty value", filterAttr)
+			}
+
+			if key == "status" {
+				foundStateFilter = true
+			}
+
+			filters = append(filters, filterAttr)
+		}
+	}
+
+	if !foundStateFilter {
+		// if there is no explicit instance state filter, add the
+		// status = "running" to the filter set. This
+		// ensures that we filter on running instances only at the API
+		// side, saving time when processing results.
+		filters = append(filters, "status = running")
+	}
+
+	return filters, nil
+}
+
+// extractFilterValue extracts the key and value from a filter string.
+// The filter string is expected to be in the format "key operator value".
+// The key and value are returned as strings, along with a boolean indicating
+// whether the extraction was successful.
+// The operator is expected to be one of =, !=, >, <, <=, >=, :, eq, ne.
+// as per GC API documentation:
+// https://cloud.google.com/compute/docs/reference/rest/v1/instances/list#filter
+func extractFilterValue(s string) (string, string, string, bool) {
+	re := regexp.MustCompile(`(?i)([^=><!:\s]+)\s*(=|!=|>|<|<=|>=|:|eq|ne)\s*([^,]+)`)
+
+	matches := re.FindStringSubmatch(s)
+
+	// Check if we have the expected number of matches
+	if len(matches) == 4 {
+		key := matches[1]
+		operator := matches[2]
+		value := matches[3]
+		return key, operator, value, true
+	}
+	return "", "", "", false
 }
