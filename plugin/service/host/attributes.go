@@ -5,6 +5,7 @@ package host
 
 import (
 	"fmt"
+	"strings"
 
 	computepb "cloud.google.com/go/compute/apiv1/computepb"
 	cred "github.com/hashicorp/boundary-plugin-gcp/internal/credential"
@@ -60,8 +61,8 @@ func getCatalogAttributes(in *structpb.Struct) (*CatalogAttributes, error) {
 
 // SetAttributes defines attributes fro the host set
 type SetAttributes struct {
-	Filter        string `mapstructure:"filter"`
-	InstanceGroup string `mapstructure:"instance_group"`
+	Filters       []string `mapstructure:"filters"`
+	InstanceGroup string   `mapstructure:"instance_group"`
 }
 
 func getSetAttributes(in *structpb.Struct) (*SetAttributes, error) {
@@ -93,7 +94,7 @@ func getSetAttributes(in *structpb.Struct) (*SetAttributes, error) {
 	if filtersRaw, ok := inMap[ConstListInstancesFilter]; ok {
 		switch filterVal := filtersRaw.(type) {
 		case string:
-			inMap[ConstListInstancesFilter] = string(filterVal)
+			inMap[ConstListInstancesFilter] = []string{filterVal}
 		}
 	}
 
@@ -117,8 +118,9 @@ func buildListInstancesRequest(attributes *SetAttributes, catalog *CatalogAttrib
 		Zone:    catalog.Zone,
 	}
 
-	if len(attributes.Filter) > 1 {
-		request.Filter = &attributes.Filter
+	if len(attributes.Filters) > 1 {
+		filters := strings.Join(attributes.Filters, " ")
+		request.Filter = &filters
 	}
 
 	return request
@@ -131,8 +133,9 @@ func buildListInstanceGroupsRequest(attributes *SetAttributes, catalog *CatalogA
 		Zone:          catalog.Zone,
 	}
 
-	if len(attributes.Filter) > 1 {
-		request.Filter = &attributes.Filter
+	if len(attributes.Filters) > 1 {
+		filters := strings.Join(attributes.Filters, " ")
+		request.Filter = &filters
 	}
 
 	return request

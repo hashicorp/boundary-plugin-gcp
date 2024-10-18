@@ -6,6 +6,7 @@ package host
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"testing"
@@ -949,17 +950,41 @@ func TestDeleteCatalog(t *testing.T) {
 
 func TestCreateSet(t *testing.T) {
 	ctx := context.Background()
-	p := &HostPlugin{}
 
 	cases := []struct {
-		name        string
-		req         *pb.OnCreateSetRequest
-		expectedErr string
+		name            string
+		req             *pb.OnCreateSetRequest
+		catalogOpts     []gcpCatalogPersistedStateOption
+		gcpOptions      []option.ClientOption
+		expectedErr     string
+		expectedErrCode codes.Code
 	}{
 		{
-			name:        "nil set",
-			req:         &pb.OnCreateSetRequest{},
-			expectedErr: "set is nil",
+			name:            "nil host catalog",
+			req:             &pb.OnCreateSetRequest{},
+			expectedErr:     "catalog is required",
+			expectedErrCode: codes.InvalidArgument,
+		},
+		{
+			name: "nil host catalog attributes",
+			req: &pb.OnCreateSetRequest{
+				Catalog: &hostcatalogs.HostCatalog{},
+			},
+			expectedErr:     "catalog attributes are required",
+			expectedErrCode: codes.InvalidArgument,
+		},
+		{
+			name: "error reading catalog attributes",
+			req: &pb.OnCreateSetRequest{
+				Catalog: &hostcatalogs.HostCatalog{
+					Secrets: new(structpb.Struct),
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: new(structpb.Struct),
+					},
+				},
+			},
+			expectedErr:     "missing required value \"project_id\"",
+			expectedErrCode: codes.InvalidArgument,
 		},
 		{
 			name: "nil set",
@@ -975,80 +1000,270 @@ func TestCreateSet(t *testing.T) {
 					},
 				},
 			},
-			expectedErr: "set is nil",
+			expectedErr:     "set is required",
+			expectedErrCode: codes.InvalidArgument,
 		},
 		{
-			name: "only allow instance group or filter, not both",
+			name: "persisted state setup error",
 			req: &pb.OnCreateSetRequest{
+				Catalog: &hostcatalogs.HostCatalog{
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								cred.ConstProjectId: structpb.NewStringValue("test-project"),
+								cred.ConstZone:      structpb.NewStringValue("us-central1-a"),
+							},
+						},
+					},
+				},
+				Persisted: &pb.HostCatalogPersisted{
+					Secrets: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							cred.ConstPrivateKeyId:         structpb.NewStringValue("test-private-key-id"),
+							cred.ConstPrivateKey:           structpb.NewStringValue("test-private-key"),
+							cred.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
+						},
+					},
+				},
+			},
+			catalogOpts: []gcpCatalogPersistedStateOption{
+				func(s *gcpCatalogPersistedState) error {
+					return fmt.Errorf("error loading persisted state")
+				},
+			},
+			expectedErr:     "error loading persisted state",
+			expectedErrCode: codes.InvalidArgument,
+		},
+		{
+			name: "nil attributes in set",
+			req: &pb.OnCreateSetRequest{
+				Catalog: &hostcatalogs.HostCatalog{
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								cred.ConstProjectId: structpb.NewStringValue("test-project"),
+								cred.ConstZone:      structpb.NewStringValue("us-central1-a"),
+							},
+						},
+					},
+				},
+				Persisted: &pb.HostCatalogPersisted{
+					Secrets: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							cred.ConstPrivateKeyId:         structpb.NewStringValue("test-private-key-id"),
+							cred.ConstPrivateKey:           structpb.NewStringValue("test-private-key"),
+							cred.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
+						},
+					},
+				},
+				Set: &hostsets.HostSet{},
+			},
+			expectedErr:     "set attributes are required",
+			expectedErrCode: codes.InvalidArgument,
+		},
+		{
+			name: "set attribute load error",
+			req: &pb.OnCreateSetRequest{
+				Catalog: &hostcatalogs.HostCatalog{
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								cred.ConstProjectId: structpb.NewStringValue("test-project"),
+								cred.ConstZone:      structpb.NewStringValue("us-central1-a"),
+							},
+						},
+					},
+				},
+				Persisted: &pb.HostCatalogPersisted{
+					Secrets: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							cred.ConstPrivateKeyId:         structpb.NewStringValue("test-private-key-id"),
+							cred.ConstPrivateKey:           structpb.NewStringValue("test-private-key"),
+							cred.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
+						},
+					},
+				},
 				Set: &hostsets.HostSet{
 					Attrs: &hostsets.HostSet_Attributes{
 						Attributes: &structpb.Struct{
 							Fields: map[string]*structpb.Value{
-								ConstListInstancesFilter: structpb.NewStringValue("status=RUNNING"),
-								ConstInstanceGroup:       structpb.NewStringValue("test"),
+								"foo": structpb.NewBoolValue(true),
+								"bar": structpb.NewBoolValue(true),
 							},
 						},
 					},
 				},
 			},
-			expectedErr: "attributes: must set instance group or filter",
+			expectedErr:     "attributes.bar: unrecognized field, attributes.foo: unrecognized field",
+			expectedErrCode: codes.InvalidArgument,
 		},
 		{
-			name: "empty filter",
+			name: "invalid filter",
 			req: &pb.OnCreateSetRequest{
+				Catalog: &hostcatalogs.HostCatalog{
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								cred.ConstProjectId: structpb.NewStringValue("test-project"),
+								cred.ConstZone:      structpb.NewStringValue("us-central1-a"),
+							},
+						},
+					},
+				},
 				Set: &hostsets.HostSet{
 					Attrs: &hostsets.HostSet_Attributes{
 						Attributes: &structpb.Struct{
 							Fields: map[string]*structpb.Value{
-								ConstListInstancesFilter: structpb.NewStringValue(""),
+								ConstListInstancesFilter: structpb.NewListValue(
+									&structpb.ListValue{
+										Values: []*structpb.Value{
+											structpb.NewStringValue("invalid"),
+										},
+									},
+								),
 							},
 						},
 					},
 				},
 			},
-			expectedErr: "attributes.filter: must not be empty",
+			expectedErr:     "error building filters",
+			expectedErrCode: codes.InvalidArgument,
 		},
 		{
-			name: "empty instance group",
+			name: "client load error",
 			req: &pb.OnCreateSetRequest{
+				Catalog: &hostcatalogs.HostCatalog{
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								cred.ConstProjectId: structpb.NewStringValue("test-project"),
+								cred.ConstZone:      structpb.NewStringValue("us-central1-a"),
+							},
+						},
+					},
+				},
+				Persisted: &pb.HostCatalogPersisted{
+					Secrets: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							cred.ConstPrivateKeyId:         structpb.NewStringValue("test-private-key-id"),
+							cred.ConstPrivateKey:           structpb.NewStringValue("test-private-key"),
+							cred.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
+						},
+					},
+				},
 				Set: &hostsets.HostSet{
 					Attrs: &hostsets.HostSet_Attributes{
 						Attributes: &structpb.Struct{
 							Fields: map[string]*structpb.Value{
-								ConstInstanceGroup: structpb.NewStringValue(""),
+								ConstListInstancesFilter: structpb.NewListValue(
+									&structpb.ListValue{
+										Values: []*structpb.Value{
+											structpb.NewStringValue("tag-key=foo"),
+										},
+									},
+								),
 							},
 						},
 					},
 				},
 			},
-			expectedErr: "attributes.instance_group: must not be empty",
+			gcpOptions: []option.ClientOption{
+				option.WithHTTPClient(&http.Client{}),
+			},
+			expectedErr:     "error getting instances client",
+			expectedErrCode: codes.InvalidArgument,
 		},
 		{
-			name: "good filter",
+			name: "List instances error",
 			req: &pb.OnCreateSetRequest{
+				Catalog: &hostcatalogs.HostCatalog{
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								cred.ConstProjectId: structpb.NewStringValue("test-project"),
+								cred.ConstZone:      structpb.NewStringValue("us-central1-a"),
+							},
+						},
+					},
+				},
+				Persisted: &pb.HostCatalogPersisted{
+					Secrets: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							cred.ConstPrivateKeyId:         structpb.NewStringValue("test-private-key-id"),
+							cred.ConstPrivateKey:           structpb.NewStringValue("test-private-key"),
+							cred.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
+						},
+					},
+				},
 				Set: &hostsets.HostSet{
 					Attrs: &hostsets.HostSet_Attributes{
 						Attributes: &structpb.Struct{
 							Fields: map[string]*structpb.Value{
-								ConstInstanceGroup: structpb.NewStringValue("status=RUNNING"),
+								ConstListInstancesFilter: structpb.NewListValue(
+									&structpb.ListValue{
+										Values: []*structpb.Value{
+											structpb.NewStringValue("tag-key=foo"),
+										},
+									},
+								),
 							},
 						},
 					},
 				},
 			},
+			catalogOpts: []gcpCatalogPersistedStateOption{
+				withTestInstancesAPIFunc(newTestMockInstances(ctx,
+					nil,
+					testMockInstancesWithListInstancesError(fmt.Errorf("failed to list instances")),
+				)),
+			},
+			expectedErr:     "gcp list instances failed",
+			expectedErrCode: codes.FailedPrecondition,
 		},
 		{
-			name: "good instance group",
+			name: "success",
 			req: &pb.OnCreateSetRequest{
-				Set: &hostsets.HostSet{
-					Attrs: &hostsets.HostSet_Attributes{
+				Catalog: &hostcatalogs.HostCatalog{
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
 						Attributes: &structpb.Struct{
 							Fields: map[string]*structpb.Value{
-								ConstInstanceGroup: structpb.NewStringValue("test"),
+								cred.ConstProjectId: structpb.NewStringValue("test-project"),
+								cred.ConstZone:      structpb.NewStringValue("us-central1-a"),
 							},
 						},
 					},
 				},
+				Persisted: &pb.HostCatalogPersisted{
+					Secrets: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							cred.ConstPrivateKeyId:         structpb.NewStringValue("test-private-key-id"),
+							cred.ConstPrivateKey:           structpb.NewStringValue("test-private-key"),
+							cred.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
+						},
+					},
+				},
+				Set: &hostsets.HostSet{
+					Attrs: &hostsets.HostSet_Attributes{
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								ConstListInstancesFilter: structpb.NewListValue(
+									&structpb.ListValue{
+										Values: []*structpb.Value{
+											structpb.NewStringValue("tag-key=foo"),
+										},
+									},
+								),
+							},
+						},
+					},
+				},
+			},
+			catalogOpts: []gcpCatalogPersistedStateOption{
+				withTestInstancesAPIFunc(newTestMockInstances(ctx,
+					nil,
+					testMockInstancesWithListInstancesOutput(&computepb.InstanceList{}),
+					testMockInstancesWithListInstancesError(nil)),
+				),
 			},
 		},
 	}
@@ -1058,9 +1273,30 @@ func TestCreateSet(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			require := require.New(t)
 
-			_, err := p.OnCreateSet(ctx, tc.req)
+			testIAMAdminServer := cred.NewTestIAMAdminServer(nil, nil)
+
+			gsrv := cred.NewGRPCServer()
+			adminpb.RegisterIAMServer(gsrv.Server, testIAMAdminServer)
+			addr, err := gsrv.Start()
+			require.NoError(err)
+
+			clientOptions := []option.ClientOption{
+				option.WithEndpoint(addr),
+				option.WithoutAuthentication(),
+				option.WithGRPCDialOption(grpc.WithTransportCredentials(insecure.NewCredentials())),
+				option.WithTokenSource(nil),
+			}
+
+			clientOptions = append(clientOptions, tc.gcpOptions...)
+
+			p := &HostPlugin{
+				testGCPClientOpts:    clientOptions,
+				testCatalogStateOpts: tc.catalogOpts,
+			}
+			_, err = p.OnCreateSet(ctx, tc.req)
 			if tc.expectedErr != "" {
 				require.Contains(err.Error(), tc.expectedErr)
+				require.Equal(status.Code(err).String(), tc.expectedErrCode.String())
 				return
 			}
 
@@ -1106,29 +1342,20 @@ func TestUpdateSet(t *testing.T) {
 					Attrs: &hostsets.HostSet_Attributes{
 						Attributes: &structpb.Struct{
 							Fields: map[string]*structpb.Value{
-								ConstListInstancesFilter: structpb.NewStringValue("status=RUNNING"),
-								ConstInstanceGroup:       structpb.NewStringValue("test"),
+								ConstListInstancesFilter: structpb.NewListValue(
+									&structpb.ListValue{
+										Values: []*structpb.Value{
+											structpb.NewStringValue("status=RUNNING"),
+										},
+									},
+								),
+								ConstInstanceGroup: structpb.NewStringValue("test"),
 							},
 						},
 					},
 				},
 			},
 			expectedErr: "attributes: must set instance group or filter",
-		},
-		{
-			name: "empty filter",
-			req: &pb.OnUpdateSetRequest{
-				NewSet: &hostsets.HostSet{
-					Attrs: &hostsets.HostSet_Attributes{
-						Attributes: &structpb.Struct{
-							Fields: map[string]*structpb.Value{
-								ConstListInstancesFilter: structpb.NewStringValue(""),
-							},
-						},
-					},
-				},
-			},
-			expectedErr: "attributes.filter: must not be empty",
 		},
 		{
 			name: "empty instance group",

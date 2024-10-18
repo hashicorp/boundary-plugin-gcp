@@ -92,7 +92,7 @@ func TestGetSetAttributes(t *testing.T) {
 				ConstListInstancesFilter: "tags.items=my-tag AND -tags.items=my-other-tag) OR tags.items=alternative-tag",
 			},
 			expected: &SetAttributes{
-				Filter: "tags.items=my-tag AND -tags.items=my-other-tag) OR tags.items=alternative-tag",
+				Filters: []string{"tags.items=my-tag AND -tags.items=my-other-tag) OR tags.items=alternative-tag"},
 			},
 		},
 		{
