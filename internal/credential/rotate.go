@@ -6,9 +6,8 @@ package credential
 import (
 	"context"
 	"fmt"
-	"strings"
-
 	"slices"
+	"strings"
 
 	admin "cloud.google.com/go/iam/admin/apiv1"
 	"cloud.google.com/go/iam/admin/apiv1/adminpb"
@@ -23,6 +22,7 @@ const (
 	ComputeInstancesListPermission        = "compute.instances.list"
 	IAMServiceAccountKeysCreatePermission = "iam.serviceAccountKeys.create"
 	IAMServiceAccountKeysDeletePermission = "iam.serviceAccountKeys.delete"
+	CreateServiceAccountKeyResourceName   = "projects/-/serviceAccounts"
 )
 
 // RotateServiceAccountKey takes the private key from this credentials config
@@ -60,7 +60,7 @@ func (c *Config) RotateServiceAccountKey(ctx context.Context, permissions []stri
 	}
 
 	createServiceAccountKeyRes, err := iamClient.CreateServiceAccountKey(ctx, &adminpb.CreateServiceAccountKeyRequest{
-		Name:           "projects/-/serviceAccounts/" + c.ClientEmail,
+		Name:           fmt.Sprintf("%s/%s", CreateServiceAccountKeyResourceName, c.ClientEmail),
 		PrivateKeyType: adminpb.ServiceAccountPrivateKeyType_TYPE_GOOGLE_CREDENTIALS_FILE,
 		KeyAlgorithm:   adminpb.ServiceAccountKeyAlgorithm_KEY_ALG_RSA_2048,
 	})
@@ -100,7 +100,7 @@ func (c *Config) RotateServiceAccountKey(ctx context.Context, permissions []stri
 	}
 
 	err = iamClient.DeleteServiceAccountKey(ctx, &adminpb.DeleteServiceAccountKeyRequest{
-		Name: fmt.Sprintf("projects/-/serviceAccounts/%s/keys/%s", c.ClientEmail, c.PrivateKeyId),
+		Name: fmt.Sprintf("%s/%s/keys/%s", CreateServiceAccountKeyResourceName, c.ClientEmail, c.PrivateKeyId),
 	})
 	if err != nil {
 		return status.Errorf(codes.Internal, "error deleting service account key: %v", err)
