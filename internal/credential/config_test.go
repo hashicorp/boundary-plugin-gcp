@@ -341,7 +341,7 @@ func TestClone(t *testing.T) {
 	require.NotEqual(t, originalConfig.Scopes, clonedConfig.Scopes)
 }
 
-func TestGetType(t *testing.T) {
+func TestIsRotatable(t *testing.T) {
 	tests := []struct {
 		name   string
 		config *Config
