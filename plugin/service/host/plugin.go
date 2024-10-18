@@ -256,7 +256,7 @@ func (p *HostPlugin) OnDeleteCatalog(ctx context.Context, req *pb.OnDeleteCatalo
 	}
 
 	// try to delete static credentials for dynamic and static credentials
-	if credState.CredentialsConfig.GetType() != credential.Unknown {
+	if credState.CredentialsConfig.IsRotatable() {
 		if !credState.CredsLastRotatedTime.IsZero() {
 			// Delete old/existing credentials. This is done with the same
 			// credentials to ensure that it has the proper permissions to do
