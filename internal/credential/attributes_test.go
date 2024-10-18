@@ -104,3 +104,166 @@ func TestGetCredentialAttributes(t *testing.T) {
 		})
 	}
 }
+
+func TestGetCredentialsConfig(t *testing.T) {
+	cases := []struct {
+		name                string
+		secrets             map[string]any
+		attrs               *CredentialAttributes
+		expected            *Config
+		expectedErrContains string
+	}{
+		{
+			name: "nil secrets",
+			attrs: &CredentialAttributes{
+				Zone: "us-central-1a",
+			},
+			expected: &Config{
+				Zone: "us-central-1a",
+			},
+		},
+		{
+			name:     "nil attributes",
+			attrs:    nil,
+			expected: &Config{},
+		},
+		{
+			name: "unknown fields in secrets",
+			secrets: map[string]any{
+				"unknown_field": "value",
+			},
+			attrs: &CredentialAttributes{
+				ProjectId: "test-project",
+				Zone:      "us-central-1a",
+			},
+			expectedErrContains: "secrets.unknown_field: unrecognized field",
+		},
+		{
+			name: "valid ignore creds_last_rotated_time",
+			secrets: map[string]any{
+				ConstPrivateKeyId:         "test-private-key-id",
+				ConstPrivateKey:           "test-private-key",
+				ConstCredsLastRotatedTime: "2006-01-02T15:04:05+07:00",
+			},
+			attrs: &CredentialAttributes{
+				ProjectId:   "test-project",
+				Zone:        "us-central-1a",
+				ClientEmail: "test@test.com",
+			},
+			expected: &Config{
+				ProjectId:    "test-project",
+				Zone:         "us-central-1a",
+				ClientEmail:  "test@test.com",
+				PrivateKey:   "test-private-key",
+				PrivateKeyId: "test-private-key-id",
+			},
+		},
+		{
+			name: "missing private key with target service account id",
+			secrets: map[string]any{
+				ConstClientEmail: "test@test.com",
+			},
+			attrs: &CredentialAttributes{
+				ProjectId:              "test-project",
+				Zone:                   "us-central-1a",
+				TargetServiceAccountId: "test-target-service-account",
+			},
+			expectedErrContains: "must not be empty when target service account id is set",
+		},
+		{
+			name: "missing client email with target service account id",
+			secrets: map[string]any{
+				ConstPrivateKey: "private-key",
+			},
+			attrs: &CredentialAttributes{
+				ProjectId:              "test-project",
+				Zone:                   "us-central-1a",
+				TargetServiceAccountId: "test-target-service-account",
+			},
+			expectedErrContains: "must not be empty when target service account id is set",
+		},
+		{
+			name: "missing client email with private key",
+			secrets: map[string]any{
+				ConstPrivateKeyId: "test-private-key-id",
+				ConstPrivateKey:   "test-private-key",
+			},
+			attrs: &CredentialAttributes{
+				ProjectId: "test-project",
+				Zone:      "us-central-1a",
+			},
+			expectedErrContains: "must not be empty when private key is set",
+		},
+		{
+			name:    "missing private key with client email",
+			secrets: map[string]any{},
+			attrs: &CredentialAttributes{
+				ClientEmail: "test@test.com",
+				ProjectId:   "test-project",
+				Zone:        "us-central-1a",
+			},
+			expectedErrContains: "must not be empty when client email is set",
+		},
+		{
+			name: "valid static credentials",
+			secrets: map[string]any{
+				ConstPrivateKeyId: "test-private-key-id",
+				ConstPrivateKey:   "test-private-key",
+			},
+			attrs: &CredentialAttributes{
+				ClientEmail: "test@test.com",
+				ProjectId:   "test-project",
+				Zone:        "us-central-1a",
+			},
+			expected: &Config{
+				ProjectId:    "test-project",
+				Zone:         "us-central-1a",
+				PrivateKey:   "test-private-key",
+				PrivateKeyId: "test-private-key-id",
+				ClientEmail:  "test@test.com",
+			},
+		},
+		{
+			name: "valid dynamic credentials",
+			secrets: map[string]any{
+				ConstPrivateKeyId: "test-private-key-id",
+				ConstPrivateKey:   "test-private-key",
+			},
+			attrs: &CredentialAttributes{
+				ClientEmail:            "test@test.com",
+				ProjectId:              "test-project",
+				Zone:                   "us-central-1a",
+				TargetServiceAccountId: "test-target-service-account",
+			},
+			expected: &Config{
+				ProjectId:              "test-project",
+				Zone:                   "us-central-1a",
+				PrivateKey:             "test-private-key",
+				PrivateKeyId:           "test-private-key-id",
+				ClientEmail:            "test@test.com",
+				TargetServiceAccountId: "test-target-service-account",
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			require := require.New(t)
+
+			secrets, err := structpb.NewStruct(tc.secrets)
+			require.NoError(err)
+
+			actual, err := GetCredentialsConfig(secrets, tc.attrs)
+			if tc.expectedErrContains != "" {
+				require.Error(err)
+				require.Contains(err.Error(), tc.expectedErrContains)
+				require.Equal(status.Code(err), codes.InvalidArgument)
+				return
+			}
+
+			require.NoError(err)
+			require.EqualValues(tc.expected, actual)
+		})
+	}
+}

@@ -79,11 +79,19 @@ func GetCredentialAttributes(in *structpb.Struct) (*CredentialAttributes, error)
 // struct input.
 func GetCredentialsConfig(secrets *structpb.Struct, attrs *CredentialAttributes) (*Config, error) {
 	// initialize secrets if it is nil
-	// secrets can be nil because static credentials are optional
+	// secrets can be nil if the authentication type is Application Default Credential(ADC)
 	if secrets == nil {
 		secrets = &structpb.Struct{
 			Fields: make(map[string]*structpb.Value),
 		}
+	}
+
+	// initialize attrs if it is nil
+	// attributes can be nil if the authentication type is Application Default Credential(ADC)
+	// where the credentials are inferred from the environment and no fields are provided
+	// https://cloud.google.com/docs/authentication/application-default-credentials
+	if attrs == nil {
+		attrs = &CredentialAttributes{}
 	}
 
 	unknownFields := values.StructFields(secrets)
@@ -101,6 +109,7 @@ func GetCredentialsConfig(secrets *structpb.Struct, attrs *CredentialAttributes)
 	}
 	delete(unknownFields, ConstPrivateKey)
 
+	delete(unknownFields, ConstCredsLastRotatedTime)
 	for s := range unknownFields {
 		badFields[fmt.Sprintf("secrets.%s", s)] = "unrecognized field"
 	}
@@ -109,10 +118,10 @@ func GetCredentialsConfig(secrets *structpb.Struct, attrs *CredentialAttributes)
 	// dynamic credentials requires the target service account id, cl and private key
 	case attrs.TargetServiceAccountId != "" && (privateKey == "" || attrs.ClientEmail == ""):
 		badFields[fmt.Sprintf("secrets.%s", ConstPrivateKey)] = "must not be empty when target service account id is set"
-		badFields[fmt.Sprintf("secrets.%s", ConstClientEmail)] = "must not be empty when target service account id is set"
+		badFields[fmt.Sprintf("attributes.%s", ConstClientEmail)] = "must not be empty when target service account id is set"
 	// static credentials requires the private key and client email
 	case privateKey != "" && attrs.ClientEmail == "":
-		badFields[fmt.Sprintf("secrets.%s", ConstClientEmail)] = "must not be empty when private key is set"
+		badFields[fmt.Sprintf("attributes.%s", ConstClientEmail)] = "must not be empty when private key is set"
 	case attrs.ClientEmail != "" && privateKey == "":
 		badFields[fmt.Sprintf("secrets.%s", ConstPrivateKey)] = "must not be empty when client email is set"
 	}

@@ -70,7 +70,7 @@ func (p *HostPlugin) OnCreateCatalog(ctx context.Context, req *pb.OnCreateCatalo
 		credential.IAMServiceAccountKeysDeletePermission,
 	}
 
-	if credState.CredentialsConfig.GetType() != credential.Unknown && !catalogAttributes.DisableCredentialRotation {
+	if credState.CredentialsConfig.IsRotatable() && !catalogAttributes.DisableCredentialRotation {
 		if err := credState.CredentialsConfig.RotateServiceAccountKey(ctx, permissions, p.testGCPClientOpts...); err != nil {
 			return nil, err
 		}

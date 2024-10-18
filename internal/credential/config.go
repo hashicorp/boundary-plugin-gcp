@@ -17,19 +17,6 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-type Type int
-
-const (
-	// StaticGCP denotes the presence of an Private Key and Client Email.
-	StaticGCP Type = iota
-
-	// DynamicGCP denotes the presence of a Target Service Account Id.
-	DynamicGCP
-
-	// Unknown is a catch-all for everything else.
-	Unknown
-)
-
 // impersonateServiceAccount is a function variable that creates a TokenSource
 var impersonateServiceAccountFn = func(
 	ctx context.Context,
@@ -180,20 +167,19 @@ func (c *Config) credentialsFromADC(ctx context.Context) (*google.Credentials, e
 	return creds, nil
 }
 
-// GetType returns the credential type based on the given
-// current config.
-func (c *Config) GetType() Type {
+// IsRotatable returns a boolean indicating if the credentials are rotatable.
+func (c *Config) IsRotatable() bool {
 	if c == nil {
-		return Unknown
+		return false
 	}
 
 	switch {
 	case len(c.TargetServiceAccountId) > 0 && len(c.PrivateKey) > 0 && len(c.ClientEmail) > 0:
-		return DynamicGCP
+		return true
 	case len(c.PrivateKey) > 0 && len(c.ClientEmail) > 0:
-		return StaticGCP
+		return true
 	default:
-		return Unknown
+		return false
 	}
 }
 
