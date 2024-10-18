@@ -51,8 +51,7 @@ func (s *PersistedState) ReplaceCreds(ctx context.Context, credentialsConfig *Co
 
 	// Delete old/existing credentials. This action is possible for static and dynamic credentials.
 	// This is done with the same credentials to ensure that it has the proper permissions to do it.
-	ct := s.CredentialsConfig.GetType()
-	if !s.CredsLastRotatedTime.IsZero() && ct != Unknown {
+	if !s.CredsLastRotatedTime.IsZero() && s.CredentialsConfig.IsRotatable() {
 		if err := s.DeleteCreds(ctx, opts...); err != nil {
 			return err
 		}
@@ -72,8 +71,8 @@ func (s *PersistedState) DeleteCreds(ctx context.Context, opts ...option.ClientO
 	if s.CredentialsConfig == nil {
 		return status.Errorf(codes.InvalidArgument, "missing credentials config")
 	}
-	if s.CredentialsConfig.GetType() == Unknown {
-		return status.Errorf(codes.InvalidArgument, "cannot delete credentials of type %v", Unknown)
+	if !s.CredentialsConfig.IsRotatable() {
+		return status.Errorf(codes.InvalidArgument, "cannot delete credentials for non-rotatable credentials")
 	}
 
 	err := s.CredentialsConfig.DeletePrivateKey(ctx, opts...)
@@ -90,7 +89,7 @@ func (s *PersistedState) DeleteCreds(ctx context.Context, opts ...option.ClientO
 // ToMap will return a map for long-term credentials with following keys:
 // private_key_id, private_key & creds_last_rotated_time
 func (s *PersistedState) ToMap() map[string]any {
-	if s.CredentialsConfig.GetType() == Unknown {
+	if !s.CredentialsConfig.IsRotatable() {
 		return map[string]any{}
 	}
 	return map[string]any{

@@ -169,7 +169,7 @@ func (p *HostPlugin) OnUpdateCatalog(ctx context.Context, req *pb.OnUpdateCatalo
 		}
 	}
 
-	if credState.CredentialsConfig.GetType() != credential.Unknown {
+	if credState.CredentialsConfig.IsRotatable() {
 		// This is a validate check to make sure that we aren't disabling
 		// rotation for credentials currently being managed by rotation.
 		// This is not allowed.
