@@ -3,7 +3,9 @@
 
 package credential
 
-import "time"
+import (
+	"time"
+)
 
 // options = how options are represented
 type Options struct {
