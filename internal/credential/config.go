@@ -55,6 +55,9 @@ type credentials struct {
 	PrivateKeyId string `json:"private_key_id"`
 }
 
+// NewConfig creates a new GCP credential configuration
+// based on the provided options.
+// If the options are invalid, it will return an error.
 func NewConfig(opt ...Option) (*Config, error) {
 	opts, err := getOpts(opt...)
 	if err != nil {

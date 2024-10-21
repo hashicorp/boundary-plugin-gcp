@@ -25,64 +25,96 @@ func Test_getOpts(t *testing.T) {
 		require.Equal(t, opts, testOpts)
 	})
 	t.Run("WithCredsLastRotatedTime", func(t *testing.T) {
+		opts, err := getOpts()
+		require.NoError(t, err)
+		require.Empty(t, opts.WithCredsLastRotatedTime)
+
 		tm := time.Now()
-		opts, err := getOpts(WithCredsLastRotatedTime(tm))
+		opts, err = getOpts(WithCredsLastRotatedTime(tm))
 		require.NoError(t, err)
 		testOpts := getDefaultOptions()
 		testOpts.WithCredsLastRotatedTime = tm
 		require.Equal(t, opts, testOpts)
 	})
 	t.Run("WithClientEmail", func(t *testing.T) {
+		opts, err := getOpts()
+		require.NoError(t, err)
+		require.Empty(t, opts.WithClientEmail)
+
 		email := "test"
-		opts, err := getOpts(WithClientEmail(email))
+		opts, err = getOpts(WithClientEmail(email))
 		require.NoError(t, err)
 		testOpts := getDefaultOptions()
 		testOpts.WithClientEmail = email
 		require.Equal(t, opts, testOpts)
 	})
 	t.Run("WithProjectId", func(t *testing.T) {
+		opts, err := getOpts()
+		require.NoError(t, err)
+		require.Empty(t, opts.WithProjectId)
+
 		projectID := "test"
-		opts, err := getOpts(WithProjectId(projectID))
+		opts, err = getOpts(WithProjectId(projectID))
 		require.NoError(t, err)
 		testOpts := getDefaultOptions()
 		testOpts.WithProjectId = projectID
 		require.Equal(t, opts, testOpts)
 	})
 	t.Run("WithTargetServiceAccountId", func(t *testing.T) {
+		opts, err := getOpts()
+		require.NoError(t, err)
+		require.Empty(t, opts.WithTargetServiceAccountId)
+
 		serviceAccountID := "test"
-		opts, err := getOpts(WithTargetServiceAccountId(serviceAccountID))
+		opts, err = getOpts(WithTargetServiceAccountId(serviceAccountID))
 		require.NoError(t, err)
 		testOpts := getDefaultOptions()
 		testOpts.WithTargetServiceAccountId = serviceAccountID
 		require.Equal(t, opts, testOpts)
 	})
 	t.Run("WithZone", func(t *testing.T) {
+		opts, err := getOpts()
+		require.NoError(t, err)
+		require.Empty(t, opts.WithZone)
+
 		zone := "test"
-		opts, err := getOpts(WithZone(zone))
+		opts, err = getOpts(WithZone(zone))
 		require.NoError(t, err)
 		testOpts := getDefaultOptions()
 		testOpts.WithZone = zone
 		require.Equal(t, opts, testOpts)
 	})
 	t.Run("WithPrivateKey", func(t *testing.T) {
+		opts, err := getOpts()
+		require.NoError(t, err)
+		require.Empty(t, opts.WithPrivateKey)
+
 		privateKey := "test"
-		opts, err := getOpts(WithPrivateKey(privateKey))
+		opts, err = getOpts(WithPrivateKey(privateKey))
 		require.NoError(t, err)
 		testOpts := getDefaultOptions()
 		testOpts.WithPrivateKey = privateKey
 		require.Equal(t, opts, testOpts)
 	})
 	t.Run("WithPrivateKeyId", func(t *testing.T) {
+		opts, err := getOpts()
+		require.NoError(t, err)
+		require.Empty(t, opts.WithPrivateKeyId)
+
 		privateKeyID := "test"
-		opts, err := getOpts(WithPrivateKeyId(privateKeyID))
+		opts, err = getOpts(WithPrivateKeyId(privateKeyID))
 		require.NoError(t, err)
 		testOpts := getDefaultOptions()
 		testOpts.WithPrivateKeyId = privateKeyID
 		require.Equal(t, opts, testOpts)
 	})
 	t.Run("WithScopes", func(t *testing.T) {
+		opts, err := getOpts()
+		require.NoError(t, err)
+		require.Nil(t, opts.WithScopes)
+
 		scopes := []string{"test"}
-		opts, err := getOpts(WithScopes(scopes))
+		opts, err = getOpts(WithScopes(scopes))
 		require.NoError(t, err)
 		testOpts := getDefaultOptions()
 		testOpts.WithScopes = scopes

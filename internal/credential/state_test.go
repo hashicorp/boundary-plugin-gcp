@@ -78,6 +78,7 @@ func TestNewGCPCredentialPersistedState(t *testing.T) {
 		})
 	}
 }
+
 func TestPersistedStateFromProto(t *testing.T) {
 	staticTime := time.Now()
 
@@ -131,7 +132,7 @@ func TestPersistedStateFromProto(t *testing.T) {
 			},
 		},
 		{
-			name: "with dynamic credentials",
+			name: "with service account impersonation credentials",
 			secrets: &structpb.Struct{
 				Fields: map[string]*structpb.Value{
 					ConstPrivateKeyId:         structpb.NewStringValue("test-private-key-id"),

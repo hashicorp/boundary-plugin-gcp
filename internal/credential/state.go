@@ -41,15 +41,15 @@ func NewPersistedState(opt ...Option) (*PersistedState, error) {
 // If the existing key was rotated at any point in time, it is
 // deleted first, otherwise it's left alone. This method returns a
 // status error with PluginError details.
-func (s *PersistedState) ReplaceCreds(ctx context.Context, credentialsConfig *Config, opts ...option.ClientOption) error {
-	if credentialsConfig == nil {
-		return status.Errorf(codes.InvalidArgument, "missing credentials config")
+func (s *PersistedState) ReplaceCreds(ctx context.Context, newCreds *Config, opts ...option.ClientOption) error {
+	if newCreds == nil {
+		return status.Errorf(codes.InvalidArgument, "missing new credentials")
 	}
 	if s.CredentialsConfig == nil {
 		return status.Errorf(codes.InvalidArgument, "missing existing credentials")
 	}
 
-	// Delete old/existing credentials. This action is possible for static and dynamic credentials.
+	// Delete old/existing credentials.
 	// This is done with the same credentials to ensure that it has the proper permissions to do it.
 	if !s.CredsLastRotatedTime.IsZero() && s.CredentialsConfig.IsRotatable() {
 		if err := s.DeleteCreds(ctx, opts...); err != nil {
@@ -58,7 +58,7 @@ func (s *PersistedState) ReplaceCreds(ctx context.Context, credentialsConfig *Co
 	}
 
 	// Set the new attributes and clear the rotated time.
-	s.CredentialsConfig = credentialsConfig
+	s.CredentialsConfig = newCreds
 	s.CredsLastRotatedTime = time.Time{}
 	return nil
 }
