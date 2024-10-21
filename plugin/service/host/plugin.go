@@ -158,20 +158,23 @@ func (p *HostPlugin) NormalizeSetData(ctx context.Context, req *pb.NormalizeSetD
 	if val == nil {
 		return &pb.NormalizeSetDataResponse{Attributes: req.Attributes}, nil
 	}
-	stringVal, ok := val.Kind.(*structpb.Value_StringValue)
-	if !ok {
+
+	switch val.GetKind().(type) {
+	case *structpb.Value_ListValue:
 		return &pb.NormalizeSetDataResponse{Attributes: req.Attributes}, nil
+	case *structpb.Value_StringValue:
+		stringVal := val.Kind.(*structpb.Value_StringValue)
+		retAttrs := proto.Clone(req.Attributes).(*structpb.Struct)
+		retAttrs.Fields["filters"] = structpb.NewListValue(
+			&structpb.ListValue{
+				Values: []*structpb.Value{
+					structpb.NewStringValue(stringVal.StringValue),
+				},
+			})
+		return &pb.NormalizeSetDataResponse{Attributes: retAttrs}, nil
+	default:
+		return &pb.NormalizeSetDataResponse{}, status.Error(codes.InvalidArgument, "attribute.filters must be a string or list")
 	}
-
-	retAttrs := proto.Clone(req.Attributes).(*structpb.Struct)
-	retAttrs.Fields["filters"] = structpb.NewListValue(
-		&structpb.ListValue{
-			Values: []*structpb.Value{
-				structpb.NewStringValue(stringVal.StringValue),
-			},
-		})
-
-	return &pb.NormalizeSetDataResponse{Attributes: retAttrs}, nil
 }
 
 // OnCreateSet is called when a dynamic host set is created.

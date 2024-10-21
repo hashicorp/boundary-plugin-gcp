@@ -863,9 +863,10 @@ func TestNormalizeSetData(t *testing.T) {
 	p := &HostPlugin{}
 
 	cases := []struct {
-		name        string
-		req         *pb.NormalizeSetDataRequest
-		expectedRsp *pb.NormalizeSetDataResponse
+		name                string
+		req                 *pb.NormalizeSetDataRequest
+		expectedRsp         *pb.NormalizeSetDataResponse
+		expectedErrContains string
 	}{
 		{
 			name: "nil attributes",
@@ -954,6 +955,39 @@ func TestNormalizeSetData(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "filters is an number",
+			req: &pb.NormalizeSetDataRequest{
+				Attributes: &structpb.Struct{
+					Fields: map[string]*structpb.Value{
+						"filters": structpb.NewNumberValue(1),
+					},
+				},
+			},
+			expectedErrContains: "attribute.filters must be a string or list",
+		},
+		{
+			name: "filters is an boolean",
+			req: &pb.NormalizeSetDataRequest{
+				Attributes: &structpb.Struct{
+					Fields: map[string]*structpb.Value{
+						"filters": structpb.NewBoolValue(true),
+					},
+				},
+			},
+			expectedErrContains: "attribute.filters must be a string or list",
+		},
+		{
+			name: "filters is null",
+			req: &pb.NormalizeSetDataRequest{
+				Attributes: &structpb.Struct{
+					Fields: map[string]*structpb.Value{
+						"filters": structpb.NewNullValue(),
+					},
+				},
+			},
+			expectedErrContains: "attribute.filters must be a string or list",
+		},
 	}
 
 	for _, tc := range cases {
@@ -962,6 +996,10 @@ func TestNormalizeSetData(t *testing.T) {
 			require := require.New(t)
 
 			actual, err := p.NormalizeSetData(ctx, tc.req)
+			if tc.expectedErrContains != "" {
+				require.ErrorContains(err, tc.expectedErrContains)
+				return
+			}
 			require.NoError(err)
 			require.Empty(cmp.Diff(tc.expectedRsp, actual, protocmp.Transform()))
 		})
