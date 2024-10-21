@@ -340,3 +340,46 @@ func TestClone(t *testing.T) {
 	require.NotEqual(t, originalConfig.TargetServiceAccountId, clonedConfig.TargetServiceAccountId)
 	require.NotEqual(t, originalConfig.Scopes, clonedConfig.Scopes)
 }
+
+func TestIsRotatable(t *testing.T) {
+	tests := []struct {
+		name   string
+		config *Config
+		want   bool
+	}{
+		{
+			name:   "Nil Config",
+			config: nil,
+			want:   false,
+		},
+		{
+			name: "Service Account Impersonation Config",
+			config: &Config{
+				PrivateKey:             "fake-private-key",
+				ClientEmail:            "test-email@example.com",
+				TargetServiceAccountId: "target-service-account@example.com",
+			},
+			want: true,
+		},
+		{
+			name: "Static GCP Config",
+			config: &Config{
+				PrivateKey:  "fake-private-key",
+				ClientEmail: "test-email@example.com",
+			},
+			want: true,
+		},
+		{
+			name:   "Default Config",
+			config: &Config{},
+			want:   false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.config.IsRotatable()
+			require.Equal(t, tt.want, got)
+		})
+	}
+}

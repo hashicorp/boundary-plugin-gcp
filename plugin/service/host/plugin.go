@@ -9,10 +9,13 @@ import (
 
 	compute "cloud.google.com/go/compute/apiv1"
 	computepb "cloud.google.com/go/compute/apiv1/computepb"
+	"github.com/hashicorp/boundary-plugin-gcp/internal/credential"
 	errors "github.com/hashicorp/boundary-plugin-gcp/internal/errors"
 	"github.com/hashicorp/boundary/sdk/pbs/controller/api/resources/hostsets"
 	pb "github.com/hashicorp/boundary/sdk/pbs/plugin"
 	"github.com/mitchellh/mapstructure"
+	"google.golang.org/api/iterator"
+	"google.golang.org/api/option"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -21,6 +24,10 @@ import (
 // GCP host service plugin.
 type HostPlugin struct {
 	pb.UnimplementedHostPluginServiceServer
+	// testGCPClientOpts are passed in to the GCP client to control test behavior
+	testGCPClientOpts []option.ClientOption
+	// testCatalogStateOpts are passed in to the stored state to control test behavior
+	testCatalogStateOpts []gcpCatalogPersistedStateOption
 }
 
 var (
@@ -28,7 +35,7 @@ var (
 )
 
 // OnCreateCatalog is called when a dynamic host catalog is created.
-func (p *HostPlugin) OnCreateCatalog(_ context.Context, req *pb.OnCreateCatalogRequest) (*pb.OnCreateCatalogResponse, error) {
+func (p *HostPlugin) OnCreateCatalog(ctx context.Context, req *pb.OnCreateCatalogRequest) (*pb.OnCreateCatalogResponse, error) {
 	catalog := req.GetCatalog()
 	if catalog == nil {
 		return nil, status.Error(codes.InvalidArgument, "catalog is nil")
@@ -39,14 +46,56 @@ func (p *HostPlugin) OnCreateCatalog(_ context.Context, req *pb.OnCreateCatalogR
 		return nil, status.Error(codes.InvalidArgument, "attributes are required")
 	}
 
-	if _, err := getCatalogAttributes(attrs); err != nil {
+	catalogAttributes, err := getCatalogAttributes(attrs)
+	if err != nil {
 		return nil, err
 	}
 
+	credConfig, err := credential.GetCredentialsConfig(catalog.GetSecrets(), catalogAttributes.CredentialAttributes)
+	if err != nil {
+		return nil, err
+	}
+
+	credState, err := credential.NewPersistedState([]credential.Option{
+		credential.WithCredentialsConfig(credConfig),
+	}...,
+	)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "error creating new persisted state: %s", err)
+	}
+
+	permissions := []string{
+		credential.ComputeInstancesListPermission,
+		credential.IAMServiceAccountKeysCreatePermission,
+		credential.IAMServiceAccountKeysDeletePermission,
+	}
+
+	if credState.CredentialsConfig.IsRotatable() && !catalogAttributes.DisableCredentialRotation {
+		if err := credState.CredentialsConfig.RotateServiceAccountKey(ctx, permissions, p.testGCPClientOpts...); err != nil {
+			return nil, err
+		}
+	}
+
+	catalogState, err := newGCPCatalogPersistedState(
+		append([]gcpCatalogPersistedStateOption{
+			withCredentials(credState),
+		}, p.testCatalogStateOpts...)...,
+	)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "error setting up persisted state: %s", err)
+	}
+
+	if st := dryRunValidation(ctx, catalogState, p.testGCPClientOpts...); st != nil {
+		return nil, st.Err()
+	}
+
+	persistedProto, err := catalogState.toProto()
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "error converting state to proto: %s", err)
+	}
+
 	return &pb.OnCreateCatalogResponse{
-		Persisted: &pb.HostCatalogPersisted{
-			Secrets: nil,
-		},
+		Persisted: persistedProto,
 	}, nil
 }
 
@@ -281,5 +330,34 @@ func validateSet(s *hostsets.HostSet) error {
 	if len(badFields) > 0 {
 		return errors.InvalidArgumentError("Invalid arguments in the new set", badFields)
 	}
+	return nil
+}
+
+// dryRunValidation performs an GCP List Instances call to verify the state's
+// credentials. If the call fails, the error is returned.
+func dryRunValidation(
+	ctx context.Context,
+	state *gcpCatalogPersistedState,
+	clientOptions ...option.ClientOption,
+) *status.Status {
+	if state == nil {
+		return status.New(codes.InvalidArgument, "persisted state is required")
+	}
+
+	instancesClient, err := state.InstancesClient(ctx, clientOptions...)
+	if err != nil {
+		return status.New(codes.InvalidArgument, fmt.Sprintf("error getting instances client: %s", err))
+	}
+
+	it := instancesClient.List(ctx, &computepb.ListInstancesRequest{
+		Project: state.CredentialsConfig.ProjectId,
+		Zone:    state.CredentialsConfig.Zone,
+	})
+
+	_, err = it.Next()
+	if err != nil && err != iterator.Done {
+		return status.New(codes.FailedPrecondition, fmt.Sprintf("gcp list instances failed: %s", err))
+	}
+
 	return nil
 }

@@ -40,6 +40,7 @@ type Config struct {
 	ProjectId              string
 	PrivateKey             string
 	PrivateKeyId           string
+	Zone                   string
 	ClientEmail            string
 	TargetServiceAccountId string
 	Scopes                 []string
@@ -164,6 +165,22 @@ func (c *Config) credentialsFromADC(ctx context.Context) (*google.Credentials, e
 		return nil, status.Errorf(codes.Internal, "failed to find default credentials: %v", err)
 	}
 	return creds, nil
+}
+
+// IsRotatable returns a boolean indicating if the credentials are rotatable.
+func (c *Config) IsRotatable() bool {
+	if c == nil {
+		return false
+	}
+
+	switch {
+	case len(c.TargetServiceAccountId) > 0 && len(c.PrivateKey) > 0 && len(c.ClientEmail) > 0:
+		return true
+	case len(c.PrivateKey) > 0 && len(c.ClientEmail) > 0:
+		return true
+	default:
+		return false
+	}
 }
 
 // impersonateServiceAccount impersonates the service account.

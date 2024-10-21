@@ -21,4 +21,10 @@ const (
 
 	// ConstTargetServiceAccountID is the unique identifier for the service account that will be impersonated.
 	ConstTargetServiceAccountID = "target_service_account_id"
+
+	// ConstPrivateKeyId is the private key id associated with the service account
+	ConstPrivateKeyId = "private_key_id"
+
+	// ConstPrivateKey is the private key associated with the service account
+	ConstPrivateKey = "private_key"
 )
