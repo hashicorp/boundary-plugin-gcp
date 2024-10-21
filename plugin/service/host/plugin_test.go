@@ -763,6 +763,42 @@ func TestUpdateCatalog(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "staticRotatedCredentialToAppDefaultCredential",
+			req: &pb.OnUpdateCatalogRequest{
+				CurrentCatalog: &hostcatalogs.HostCatalog{
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								cred.ConstProjectId:   structpb.NewStringValue("test-project"),
+								cred.ConstClientEmail: structpb.NewStringValue("test@example.com"),
+								cred.ConstZone:        structpb.NewStringValue("us-central1-a"),
+							},
+						},
+					},
+				},
+				NewCatalog: &hostcatalogs.HostCatalog{
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								cred.ConstProjectId: structpb.NewStringValue("test-project"),
+								cred.ConstZone:      structpb.NewStringValue("us-central1-a"),
+							},
+						},
+					},
+				},
+				Persisted: &pb.HostCatalogPersisted{
+					Secrets: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							cred.ConstPrivateKeyId:         structpb.NewStringValue("persisted-private-key-id"),
+							cred.ConstPrivateKey:           structpb.NewStringValue("persisted-private-key"),
+							cred.ConstCredsLastRotatedTime: structpb.NewStringValue(time.Time{}.Format(time.RFC3339Nano)),
+						},
+					},
+				},
+			},
+			expectedErr: "cannot rotate credentials for non-rotatable credentials",
+		},
 	}
 
 	for _, tc := range cases {

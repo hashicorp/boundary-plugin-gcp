@@ -170,6 +170,10 @@ func (p *HostPlugin) OnUpdateCatalog(ctx context.Context, req *pb.OnUpdateCatalo
 	}
 
 	if credState.CredentialsConfig.IsRotatable() {
+		if !updatedCredentials.IsRotatable() && !newCatalogAttributes.DisableCredentialRotation {
+			return nil, status.Error(codes.InvalidArgument, "cannot rotate credentials for non-rotatable credentials")
+		}
+
 		// This is a validate check to make sure that we aren't disabling
 		// rotation for credentials currently being managed by rotation.
 		// This is not allowed.
