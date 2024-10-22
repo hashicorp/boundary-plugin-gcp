@@ -380,10 +380,64 @@ func (p *HostPlugin) OnCreateSet(ctx context.Context, req *pb.OnCreateSetRequest
 }
 
 // OnUpdateSet is called when a dynamic host set is updated.
-func (p *HostPlugin) OnUpdateSet(_ context.Context, req *pb.OnUpdateSetRequest) (*pb.OnUpdateSetResponse, error) {
-	if err := validateSet(req.GetNewSet()); err != nil {
+func (p *HostPlugin) OnUpdateSet(ctx context.Context, req *pb.OnUpdateSetRequest) (*pb.OnUpdateSetResponse, error) {
+	catalog := req.GetCatalog()
+	if catalog == nil {
+		return nil, status.Error(codes.InvalidArgument, "catalog is required")
+	}
+
+	attrs := catalog.GetAttributes()
+	if attrs == nil {
+		return nil, status.Error(codes.InvalidArgument, "catalog attributes are required")
+	}
+
+	catalogAttributes, err := getCatalogAttributes(attrs)
+	if err != nil {
 		return nil, err
 	}
+
+	credState, err := credential.PersistedStateFromProto(
+		req.GetPersisted().GetSecrets(),
+		catalogAttributes.CredentialAttributes)
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "error getting persisted state from proto: %s", err)
+	}
+
+	catalogState, err := newGCPCatalogPersistedState(
+		append([]gcpCatalogPersistedStateOption{
+			withCredentials(credState),
+		}, p.testCatalogStateOpts...)...,
+	)
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "error loading persisted state: %s", err)
+	}
+
+	set := req.GetNewSet()
+	if set == nil {
+		return nil, status.Error(codes.InvalidArgument, "set is required")
+	}
+	if err := validateSet(set); err != nil {
+		return nil, err
+	}
+
+	if set.GetAttributes() == nil {
+		return nil, status.Error(codes.InvalidArgument, "set attributes are required")
+	}
+	setAttrs, err := getSetAttributes(set.GetAttributes())
+	if err != nil {
+		return nil, err
+	}
+
+	listInstanceFilters, err := buildFilters(setAttrs)
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "error building filters: %s", err)
+	}
+
+	// perform dry run to ensure we can interact with GCP as expected.
+	if st := dryRunValidation(ctx, catalogState, listInstanceFilters, p.testGCPClientOpts...); st != nil {
+		return nil, st.Err()
+	}
+
 	return &pb.OnUpdateSetResponse{}, nil
 }
 
