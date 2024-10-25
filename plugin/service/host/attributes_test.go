@@ -96,15 +96,6 @@ func TestGetSetAttributes(t *testing.T) {
 			},
 		},
 		{
-			name: "valid example instance group",
-			in: map[string]any{
-				ConstInstanceGroup: "test",
-			},
-			expected: &SetAttributes{
-				InstanceGroup: "test",
-			},
-		},
-		{
 			name: "unknown fields",
 			in: map[string]any{
 				"foo": true,

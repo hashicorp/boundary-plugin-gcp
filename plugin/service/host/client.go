@@ -6,9 +6,8 @@ package host
 import (
 	"context"
 	"errors"
-	"path"
+	"strconv"
 
-	compute "cloud.google.com/go/compute/apiv1"
 	computepb "cloud.google.com/go/compute/apiv1/computepb"
 	pb "github.com/hashicorp/boundary/sdk/pbs/plugin"
 	"google.golang.org/api/iterator"
@@ -16,66 +15,25 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-const (
-	NumberMaxResults = uint32(100)
-)
-
-// GoogleClient contains clients and attributes for authenticating to Google Cloud
-// and finding instances
-type GoogleClient struct {
-	InstancesClient     *compute.InstancesClient
-	InstanceGroupClient *compute.InstanceGroupsClient
-	Context             context.Context
-	Project             string
-	Zone                string
-}
-
-func (c *GoogleClient) getInstances(request *computepb.ListInstancesRequest) ([]*computepb.Instance, error) {
+func getInstances(ctx context.Context, instancesClient InstancesAPI, request *computepb.ListInstancesRequest) ([]*computepb.Instance, error) {
 	hosts := []*computepb.Instance{}
-	it := c.InstancesClient.List(c.Context, request)
+	it := instancesClient.List(ctx, request)
 	for {
 		resp, err := it.Next()
 		if err == iterator.Done {
 			break
 		}
 		if err != nil {
-			return nil, status.Errorf(codes.InvalidArgument, "error listing instances: %s", err)
+			return nil, status.Errorf(codes.Unknown, "error listing instances: %s", err)
 		}
 		hosts = append(hosts, resp)
 	}
 	return hosts, nil
 }
 
-func (c *GoogleClient) getInstancesForInstanceGroup(request *computepb.ListInstancesInstanceGroupsRequest) ([]*computepb.Instance, error) {
-	hosts := []*computepb.Instance{}
-	instances := c.InstanceGroupClient.ListInstances(c.Context, request)
-
-	for {
-		resp, err := instances.Next()
-		if err == iterator.Done {
-			break
-		}
-		if err != nil {
-			return nil, status.Errorf(codes.InvalidArgument, "error listing instances for instance group %s: %s", request.InstanceGroup, err)
-		}
-
-		instance, err := c.InstancesClient.Get(c.Context, &computepb.GetInstanceRequest{
-			Instance: path.Base(resp.GetInstance()),
-			Project:  request.Project,
-			Zone:     request.Zone,
-		})
-		if err != nil {
-			return nil, status.Errorf(codes.InvalidArgument, "error getting instance %s for instance group %s: %s", resp.GetInstance(), request.InstanceGroup, err)
-		}
-
-		hosts = append(hosts, instance)
-	}
-	return hosts, nil
-}
-
 func instanceToHost(instance *computepb.Instance) (*pb.ListHostsResponseHost, error) {
-	if instance.GetSelfLink() == "" {
-		return nil, errors.New("response integrity error: missing instance self-link")
+	if instance.GetId() == 0 {
+		return nil, errors.New("response integrity error: missing instance id")
 	}
 
 	if instance.GetName() == "" {
@@ -84,22 +42,33 @@ func instanceToHost(instance *computepb.Instance) (*pb.ListHostsResponseHost, er
 
 	result := new(pb.ListHostsResponseHost)
 
-	result.ExternalId = instance.GetSelfLink()
+	result.ExternalId = strconv.FormatUint(instance.GetId(), 10)
 	result.ExternalName = instance.GetName()
+
+	// Internal DNS name is the hostname of the instance.
+	// https://cloud.google.com/compute/docs/networking/using-internal-dns
+	dnsName := instance.GetHostname()
+	result.DnsNames = appendDistinct(result.DnsNames, &dnsName)
 
 	// Now go through all of the interfaces and log the IP address of
 	// every interface.
 	for _, iface := range instance.GetNetworkInterfaces() {
-		// Populate default IP addresses/DNS name similar to how we do
+		// Populate default IP addresses name similar to how we do
 		// for the entire instance.
 		result.IpAddresses = appendDistinct(result.IpAddresses, iface.NetworkIP)
 
 		for _, external := range iface.AccessConfigs {
 			result.IpAddresses = appendDistinct(result.IpAddresses, external.NatIP)
+			result.IpAddresses = appendDistinct(result.IpAddresses, external.ExternalIpv6)
 		}
 
 		// Add the IPv6 addresses.
 		result.IpAddresses = appendDistinct(result.IpAddresses, iface.Ipv6Address)
+		if iface.Ipv6AccessConfigs != nil {
+			for _, external := range iface.Ipv6AccessConfigs {
+				result.IpAddresses = appendDistinct(result.IpAddresses, external.ExternalIpv6)
+			}
+		}
 	}
 
 	// Done
