@@ -38,6 +38,13 @@ var (
 	_ pb.HostPluginServiceServer = (*HostPlugin)(nil)
 )
 
+const (
+	// defaultStatusFilter is the default filter to apply to instances
+	// if no status filter is provided.
+	// This is used to filter on running instances only.
+	defaultStatusFilter = "status = running"
+)
+
 // OnCreateCatalog is called when a dynamic host catalog is created.
 func (p *HostPlugin) OnCreateCatalog(ctx context.Context, req *pb.OnCreateCatalogRequest) (*pb.OnCreateCatalogResponse, error) {
 	catalog := req.GetCatalog()
@@ -625,7 +632,7 @@ func buildFilters(attrs *SetAttributes) ([]string, error) {
 		// status = "running" to the filter set. This
 		// ensures that we filter on running instances only at the API
 		// side, saving time when processing results.
-		filters = append(filters, "status = running")
+		filters = append(filters, defaultStatusFilter)
 	}
 
 	return filters, nil
@@ -636,7 +643,7 @@ func buildFilters(attrs *SetAttributes) ([]string, error) {
 // The key and value are returned as strings, along with a boolean indicating
 // whether the extraction was successful.
 // The operator is expected to be one of =, !=, >, <, <=, >=, :, eq, ne.
-// as per GC API documentation:
+// as per GCP API documentation:
 // https://cloud.google.com/compute/docs/reference/rest/v1/instances/list#filter
 func extractFilterValue(s string) (string, string, string, bool) {
 	re := regexp.MustCompile(`(?i)([^=><!:\s]+)\s*(=|!=|>|<|<=|>=|:|eq|ne)\s*([^,]+)`)
