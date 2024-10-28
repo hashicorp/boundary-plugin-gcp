@@ -143,7 +143,7 @@ func (c *Config) DeletePrivateKey(ctx context.Context, opts ...option.ClientOpti
 		Name: fmt.Sprintf("projects/-/serviceAccounts/%s/keys/%s", c.ClientEmail, c.PrivateKeyId),
 	})
 	if err != nil {
-		return status.Errorf(codes.Internal, "error deleting service account key: %v", err)
+		return status.Errorf(codes.Unknown, "error deleting service account key: %v", err)
 	}
 
 	return nil

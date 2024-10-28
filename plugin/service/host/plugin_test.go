@@ -5,6 +5,7 @@ package host
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -23,7 +24,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/api/option"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/status"
 
 	"google.golang.org/protobuf/testing/protocmp"
 	"google.golang.org/protobuf/types/known/structpb"
@@ -840,6 +843,106 @@ func TestUpdateCatalog(t *testing.T) {
 
 			delete(actual.GetPersisted().GetSecrets().GetFields(), cred.ConstCredsLastRotatedTime)
 			require.Empty(cmp.Diff(tc.expectedRsp, actual, protocmp.Transform()))
+		})
+	}
+}
+
+func TestDeleteCatalog(t *testing.T) {
+	cases := []struct {
+		name            string
+		req             *pb.OnDeleteCatalogRequest
+		catalogOpts     []gcpCatalogPersistedStateOption
+		deleteCredError error
+		expectedRsp     *pb.OnDeleteCatalogResponse
+		expectedErr     string
+		expectedErrCode codes.Code
+	}{
+		{
+			name: "persisted state setup error",
+			req: &pb.OnDeleteCatalogRequest{
+				Catalog: &hostcatalogs.HostCatalog{
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								cred.ConstProjectId: structpb.NewStringValue("test-project-id"),
+								cred.ConstZone:      structpb.NewStringValue("us-central1-a"),
+							},
+						},
+					},
+				},
+				Persisted: &pb.HostCatalogPersisted{
+					Secrets: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							cred.ConstPrivateKeyId:         structpb.NewStringValue("test-private-key-id"),
+							cred.ConstPrivateKey:           structpb.NewStringValue("test-private-key"),
+							cred.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
+						},
+					},
+				},
+			},
+			catalogOpts: []gcpCatalogPersistedStateOption{
+				func(s *gcpCatalogPersistedState) error {
+					return fmt.Errorf("error loading persisted state")
+				},
+			},
+			expectedErr:     "error loading persisted state",
+			expectedErrCode: codes.InvalidArgument,
+		},
+		{
+			name: "delete error",
+			req: &pb.OnDeleteCatalogRequest{
+				Catalog: &hostcatalogs.HostCatalog{
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								cred.ConstClientEmail: structpb.NewStringValue("test@test.com"),
+								cred.ConstProjectId:   structpb.NewStringValue("test-project-id"),
+								cred.ConstZone:        structpb.NewStringValue("us-central1-a"),
+							},
+						},
+					},
+				},
+				Persisted: &pb.HostCatalogPersisted{
+					Secrets: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							cred.ConstPrivateKeyId:         structpb.NewStringValue("test-private-key-id"),
+							cred.ConstPrivateKey:           structpb.NewStringValue("test-private-key"),
+							cred.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
+						},
+					},
+				},
+			},
+			deleteCredError: fmt.Errorf("failed to delete access key"),
+			expectedErr:     "failed to delete access key",
+			expectedErrCode: codes.Unknown,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			require := require.New(t)
+
+			testIAMAdminServer := cred.NewTestIAMAdminServer(nil, tc.deleteCredError)
+
+			gsrv := cred.NewGRPCServer()
+			adminpb.RegisterIAMServer(gsrv.Server, testIAMAdminServer)
+			addr, err := gsrv.Start()
+			require.NoError(err)
+
+			p := &HostPlugin{
+				testGCPClientOpts: []option.ClientOption{
+					option.WithEndpoint(addr),
+					option.WithoutAuthentication(),
+					option.WithGRPCDialOption(grpc.WithTransportCredentials(insecure.NewCredentials())),
+					option.WithTokenSource(nil),
+				},
+				testCatalogStateOpts: tc.catalogOpts,
+			}
+
+			_, err = p.OnDeleteCatalog(context.Background(), tc.req)
+			require.Error(err)
+			require.Contains(err.Error(), tc.expectedErr)
+			require.Equal(status.Code(err).String(), tc.expectedErrCode.String())
 		})
 	}
 }
