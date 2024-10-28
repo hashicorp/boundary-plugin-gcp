@@ -18,6 +18,8 @@ import (
 	"google.golang.org/api/option"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/structpb"
 )
 
 // HostPlugin implements the HostPluginServiceServer interface for the
@@ -268,6 +270,42 @@ func (p *HostPlugin) OnDeleteCatalog(ctx context.Context, req *pb.OnDeleteCatalo
 	}
 
 	return &pb.OnDeleteCatalogResponse{}, nil
+}
+
+// NormalizeCatalogData is called to normalize the catalog data.
+func (p *HostPlugin) NormalizeCatalogData(ctx context.Context, req *pb.NormalizeCatalogDataRequest) (*pb.NormalizeCatalogDataResponse, error) {
+	// No-op, Catalog fields do not require any normalization
+	return &pb.NormalizeCatalogDataResponse{Attributes: req.Attributes}, nil
+}
+
+// NormalizeSetData currently ensures that "filters" is an array value, even
+// though it's accepted as a string value for CLI UX reasons
+func (p *HostPlugin) NormalizeSetData(ctx context.Context, req *pb.NormalizeSetDataRequest) (*pb.NormalizeSetDataResponse, error) {
+	if req.Attributes == nil {
+		return &pb.NormalizeSetDataResponse{}, nil
+	}
+
+	val := req.Attributes.Fields["filters"]
+	if val == nil {
+		return &pb.NormalizeSetDataResponse{Attributes: req.Attributes}, nil
+	}
+
+	switch val.GetKind().(type) {
+	case *structpb.Value_ListValue:
+		return &pb.NormalizeSetDataResponse{Attributes: req.Attributes}, nil
+	case *structpb.Value_StringValue:
+		stringVal := val.Kind.(*structpb.Value_StringValue)
+		retAttrs := proto.Clone(req.Attributes).(*structpb.Struct)
+		retAttrs.Fields["filters"] = structpb.NewListValue(
+			&structpb.ListValue{
+				Values: []*structpb.Value{
+					structpb.NewStringValue(stringVal.StringValue),
+				},
+			})
+		return &pb.NormalizeSetDataResponse{Attributes: retAttrs}, nil
+	default:
+		return &pb.NormalizeSetDataResponse{}, status.Error(codes.InvalidArgument, "attribute.filters must be a string or list")
+	}
 }
 
 // OnCreateSet is called when a dynamic host set is created.
