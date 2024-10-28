@@ -61,8 +61,7 @@ func getCatalogAttributes(in *structpb.Struct) (*CatalogAttributes, error) {
 
 // SetAttributes defines attributes fro the host set
 type SetAttributes struct {
-	Filters       []string `mapstructure:"filters"`
-	InstanceGroup string   `mapstructure:"instance_group"`
+	Filters []string `mapstructure:"filters"`
 }
 
 func getSetAttributes(in *structpb.Struct) (*SetAttributes, error) {
@@ -78,7 +77,6 @@ func getSetAttributes(in *structpb.Struct) (*SetAttributes, error) {
 	}
 
 	delete(unknownFields, ConstListInstancesFilter)
-	delete(unknownFields, ConstInstanceGroup)
 
 	for a := range unknownFields {
 		badFields[fmt.Sprintf("attributes.%s", a)] = "unrecognized field"
@@ -98,13 +96,6 @@ func getSetAttributes(in *structpb.Struct) (*SetAttributes, error) {
 		}
 	}
 
-	if instanceGroupRaw, ok := inMap[ConstInstanceGroup]; ok {
-		switch instanceGroupValue := instanceGroupRaw.(type) {
-		case string:
-			inMap[ConstInstanceGroup] = string(instanceGroupValue)
-		}
-	}
-
 	if err := mapstructure.Decode(inMap, &setAttrs); err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "error decoding set attributes: %s", err)
 	}
@@ -112,31 +103,21 @@ func getSetAttributes(in *structpb.Struct) (*SetAttributes, error) {
 	return &setAttrs, nil
 }
 
-func buildListInstancesRequest(attributes *SetAttributes, catalog *CatalogAttributes) *computepb.ListInstancesRequest {
+func buildListInstancesRequest(attributes *SetAttributes, catalog *CatalogAttributes) (*computepb.ListInstancesRequest, error) {
 	request := &computepb.ListInstancesRequest{
 		Project: catalog.ProjectId,
 		Zone:    catalog.Zone,
 	}
 
-	if len(attributes.Filters) > 1 {
-		filters := strings.Join(attributes.Filters, " ")
+	filters, err := buildFilters(attributes)
+	if err != nil {
+		return nil, fmt.Errorf("error building filters: %w", err)
+	}
+
+	if len(filters) > 1 {
+		filters := strings.Join(filters, " AND ")
 		request.Filter = &filters
 	}
 
-	return request
-}
-
-func buildListInstanceGroupsRequest(attributes *SetAttributes, catalog *CatalogAttributes) *computepb.ListInstancesInstanceGroupsRequest {
-	request := &computepb.ListInstancesInstanceGroupsRequest{
-		InstanceGroup: attributes.InstanceGroup,
-		Project:       catalog.ProjectId,
-		Zone:          catalog.Zone,
-	}
-
-	if len(attributes.Filters) > 1 {
-		filters := strings.Join(attributes.Filters, " ")
-		request.Filter = &filters
-	}
-
-	return request
+	return request, nil
 }

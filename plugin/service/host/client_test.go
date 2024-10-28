@@ -4,15 +4,19 @@
 package host
 
 import (
+	"context"
+	"errors"
+	"strconv"
 	"testing"
 
 	"cloud.google.com/go/compute/apiv1/computepb"
+	"github.com/hashicorp/boundary-plugin-gcp/internal/credential"
 	pb "github.com/hashicorp/boundary/sdk/pbs/plugin"
 	"github.com/stretchr/testify/require"
 )
 
 func TestInstanceToHost(t *testing.T) {
-	exampleId := "https://www.googleapis.com/compute/v1/projects/test-project/zones/us-central1-a/instances/test-instance"
+	exampleId := uint64(123456789)
 	examplePrivateIp := "10.0.0.1"
 	examplePrivateIp2 := "10.0.0.2"
 	examplePublicIp := "1.1.1.1"
@@ -27,24 +31,24 @@ func TestInstanceToHost(t *testing.T) {
 		expectedErr string
 	}{
 		{
-			name: "missing instance self-link",
+			name: "missing instance id",
 			instance: &computepb.Instance{
 				Name: &exampleName,
 			},
-			expectedErr: "response integrity error: missing instance self-link",
+			expectedErr: "response integrity error: missing instance id",
 		},
 		{
 			name: "missing instance name",
 			instance: &computepb.Instance{
-				SelfLink: &exampleId,
+				Id: &exampleId,
 			},
 			expectedErr: "response integrity error: missing instance name",
 		},
 		{
 			name: "good, single private IP with public IP address",
 			instance: &computepb.Instance{
-				SelfLink: &exampleId,
-				Name:     &exampleName,
+				Id:   &exampleId,
+				Name: &exampleName,
 				NetworkInterfaces: []*computepb.NetworkInterface{
 					{
 						NetworkIP: &examplePrivateIp,
@@ -57,7 +61,7 @@ func TestInstanceToHost(t *testing.T) {
 				},
 			},
 			expected: &pb.ListHostsResponseHost{
-				ExternalId:   exampleId,
+				ExternalId:   strconv.FormatUint(exampleId, 10),
 				ExternalName: exampleName,
 				IpAddresses:  []string{examplePrivateIp, examplePublicIp},
 			},
@@ -65,8 +69,8 @@ func TestInstanceToHost(t *testing.T) {
 		{
 			name: "good, single private IP address",
 			instance: &computepb.Instance{
-				SelfLink: &exampleId,
-				Name:     &exampleName,
+				Id:   &exampleId,
+				Name: &exampleName,
 				NetworkInterfaces: []*computepb.NetworkInterface{
 					{
 						NetworkIP:     &examplePrivateIp,
@@ -75,7 +79,7 @@ func TestInstanceToHost(t *testing.T) {
 				},
 			},
 			expected: &pb.ListHostsResponseHost{
-				ExternalId:   exampleId,
+				ExternalId:   strconv.FormatUint(exampleId, 10),
 				ExternalName: exampleName,
 				IpAddresses:  []string{examplePrivateIp},
 			},
@@ -83,8 +87,8 @@ func TestInstanceToHost(t *testing.T) {
 		{
 			name: "good, multiple interfaces",
 			instance: &computepb.Instance{
-				SelfLink: &exampleId,
-				Name:     &exampleName,
+				Id:   &exampleId,
+				Name: &exampleName,
 				NetworkInterfaces: []*computepb.NetworkInterface{
 					{
 						NetworkIP: &examplePrivateIp,
@@ -105,7 +109,7 @@ func TestInstanceToHost(t *testing.T) {
 				},
 			},
 			expected: &pb.ListHostsResponseHost{
-				ExternalId:   exampleId,
+				ExternalId:   strconv.FormatUint(exampleId, 10),
 				ExternalName: exampleName,
 				IpAddresses:  []string{examplePrivateIp, examplePublicIp, examplePrivateIp2, examplePublicIp2},
 			},
@@ -113,8 +117,8 @@ func TestInstanceToHost(t *testing.T) {
 		{
 			name: "good, single private IP address with IPv6",
 			instance: &computepb.Instance{
-				SelfLink: &exampleId,
-				Name:     &exampleName,
+				Id:   &exampleId,
+				Name: &exampleName,
 				NetworkInterfaces: []*computepb.NetworkInterface{
 					{
 						NetworkIP:     &examplePrivateIp,
@@ -124,7 +128,7 @@ func TestInstanceToHost(t *testing.T) {
 				},
 			},
 			expected: &pb.ListHostsResponseHost{
-				ExternalId:   exampleId,
+				ExternalId:   strconv.FormatUint(exampleId, 10),
 				ExternalName: exampleName,
 				IpAddresses:  []string{examplePrivateIp, exampleIPv6},
 			},
@@ -143,6 +147,91 @@ func TestInstanceToHost(t *testing.T) {
 
 			require.NoError(err)
 			require.Equal(tc.expected, actual)
+		})
+	}
+}
+
+func TestGetInstances(t *testing.T) {
+	ctx := context.Background()
+
+	exampleId := uint64(123456789)
+	exampleName := "test-instance"
+	exampleInstance := &computepb.Instance{
+		Id:   &exampleId,
+		Name: &exampleName,
+	}
+
+	cases := []struct {
+		name            string
+		instancesClient InstancesAPI
+		request         *computepb.ListInstancesRequest
+		expected        []*computepb.Instance
+		expectedErr     string
+	}{
+		{
+			name: "successful retrieval",
+			instancesClient: func() InstancesAPI {
+				fn := newTestMockInstances(ctx,
+					nil,
+					testMockInstancesWithListInstancesOutput(&computepb.InstanceList{
+						Items: []*computepb.Instance{exampleInstance},
+					}),
+					testMockInstancesWithListInstancesError(nil),
+				)
+				client, err := fn(&credential.Config{})
+				require.NoError(t, err)
+				return client
+			}(),
+			request:  &computepb.ListInstancesRequest{},
+			expected: []*computepb.Instance{exampleInstance},
+		},
+		{
+			name: "error during listing",
+			instancesClient: func() InstancesAPI {
+				fn := newTestMockInstances(ctx,
+					nil,
+					testMockInstancesWithListInstancesOutput(&computepb.InstanceList{}),
+					testMockInstancesWithListInstancesError(errors.New("internal error")),
+				)
+				client, err := fn(&credential.Config{})
+				require.NoError(t, err)
+				return client
+			}(),
+			request:     &computepb.ListInstancesRequest{},
+			expectedErr: "error listing instances",
+		},
+		{
+			name: "no instances",
+			instancesClient: func() InstancesAPI {
+				fn := newTestMockInstances(ctx,
+					nil,
+					testMockInstancesWithListInstancesOutput(&computepb.InstanceList{}),
+					testMockInstancesWithListInstancesError(nil),
+				)
+				client, err := fn(&credential.Config{})
+				require.NoError(t, err)
+				return client
+			}(),
+			request:  &computepb.ListInstancesRequest{},
+			expected: []*computepb.Instance{},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			require := require.New(t)
+			actual, err := getInstances(ctx, tc.instancesClient, tc.request)
+			if tc.expectedErr != "" {
+				require.ErrorContains(err, tc.expectedErr)
+				return
+			}
+
+			require.NoError(err)
+			require.Len(actual, len(tc.expected))
+			if len(actual) > 0 {
+				require.Equal(tc.expected[0].Name, actual[0].Name)
+				require.Equal(tc.expected[0].Id, actual[0].Id)
+			}
 		})
 	}
 }

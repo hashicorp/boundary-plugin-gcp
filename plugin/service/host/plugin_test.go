@@ -5,10 +5,9 @@ package host
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
-	"os"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -21,7 +20,6 @@ import (
 	"github.com/hashicorp/boundary/sdk/pbs/controller/api/resources/hostcatalogs"
 	"github.com/hashicorp/boundary/sdk/pbs/controller/api/resources/hostsets"
 	pb "github.com/hashicorp/boundary/sdk/pbs/plugin"
-	"github.com/hashicorp/go-secure-stdlib/parseutil"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/api/option"
 	"google.golang.org/grpc"
@@ -41,54 +39,351 @@ func wrapMap(t *testing.T, in map[string]interface{}) *structpb.Struct {
 }
 
 func TestListHosts(t *testing.T) {
-	t.Skip("TODO: this needs a secrets file to run - maybe only manually?")
 	ctx := context.Background()
-	p := &HostPlugin{}
-
-	wd, err := os.Getwd()
-	require.NoError(t, err)
-	require.NotEmpty(t, wd)
-	project, err := parseutil.ParsePath("file://" + filepath.Join(wd, "secrets", "project"))
-	require.NoError(t, err)
-	zone, err := parseutil.ParsePath("file://" + filepath.Join(wd, "secrets", "zone"))
-	require.NoError(t, err)
-
-	hostCatalogAttributes := &hostcatalogs.HostCatalog_Attributes{
-		Attributes: wrapMap(t, map[string]interface{}{
-			cred.ConstProjectId: project,
-			cred.ConstZone:      zone,
-		}),
-	}
 
 	cases := []struct {
-		name        string
-		req         *pb.ListHostsRequest
-		expected    []*pb.ListHostsResponseHost
-		expectedErr string
+		name            string
+		req             *pb.ListHostsRequest
+		catalogOpts     []gcpCatalogPersistedStateOption
+		gcpOptions      []option.ClientOption
+		expected        []*pb.ListHostsResponseHost
+		expectedErr     string
+		expectedErrCode codes.Code
 	}{
 		{
-			name:        "nil catalog",
-			req:         &pb.ListHostsRequest{},
-			expectedErr: "catalog is nil",
+			name:            "nil catalog",
+			req:             &pb.ListHostsRequest{},
+			expectedErr:     "catalog is nil",
+			expectedErrCode: codes.InvalidArgument,
 		},
 		{
-			name: "project not defined",
+			name: "nil catalog attributes",
+			req: &pb.ListHostsRequest{
+				Catalog: &hostcatalogs.HostCatalog{
+					Secrets: new(structpb.Struct),
+				},
+			},
+			expectedErr:     "catalog missing attributes",
+			expectedErrCode: codes.InvalidArgument,
+		},
+		{
+			name: "zone not defined",
+			req: &pb.ListHostsRequest{
+				Catalog: &hostcatalogs.HostCatalog{
+					Secrets: new(structpb.Struct),
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: new(structpb.Struct),
+					},
+				},
+			},
+			expectedErr:     "attributes.zone: missing required value \"zone\"",
+			expectedErrCode: codes.InvalidArgument,
+		},
+		{
+			name: "project_id not defined",
 			req: &pb.ListHostsRequest{
 				Catalog: &hostcatalogs.HostCatalog{
 					Attrs: &hostcatalogs.HostCatalog_Attributes{
 						Attributes: wrapMap(t, map[string]interface{}{
-							cred.ConstZone: zone,
+							cred.ConstZone: "us-central1-c",
 						}),
 					},
 				},
 			},
-			expectedErr: "attributes.project: missing required value \"project\"",
+			expectedErr:     "attributes.project_id: missing required value \"project_id\"",
+			expectedErrCode: codes.InvalidArgument,
+		},
+		{
+			name: "persisted state setup error",
+			req: &pb.ListHostsRequest{
+				Catalog: &hostcatalogs.HostCatalog{
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								cred.ConstProjectId: structpb.NewStringValue("test-project-id"),
+								cred.ConstZone:      structpb.NewStringValue("us-central1-c"),
+							},
+						},
+					},
+				},
+				Persisted: &pb.HostCatalogPersisted{
+					Secrets: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							cred.ConstPrivateKeyId:         structpb.NewStringValue("test-private-key-id"),
+							cred.ConstPrivateKey:           structpb.NewStringValue("test-private-key"),
+							cred.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
+						},
+					},
+				},
+			},
+			catalogOpts: []gcpCatalogPersistedStateOption{
+				func(s *gcpCatalogPersistedState) error {
+					return errors.New("error loading persisted state")
+				},
+			},
+			expectedErr:     "error loading persisted state",
+			expectedErrCode: codes.InvalidArgument,
+		},
+		{
+			name: "set missing id",
+			req: &pb.ListHostsRequest{
+				Catalog: &hostcatalogs.HostCatalog{
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								cred.ConstProjectId: structpb.NewStringValue("test-project-id"),
+								cred.ConstZone:      structpb.NewStringValue("us-central1-c"),
+							},
+						},
+					},
+				},
+				Persisted: &pb.HostCatalogPersisted{
+					Secrets: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							cred.ConstPrivateKeyId:         structpb.NewStringValue("test-private-key-id"),
+							cred.ConstPrivateKey:           structpb.NewStringValue("test-private-key"),
+							cred.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
+						},
+					},
+				},
+				Sets: []*hostsets.HostSet{{}},
+			},
+			expectedErr:     "set missing id",
+			expectedErrCode: codes.InvalidArgument,
+		},
+		{
+			name: "set missing attributes",
+			req: &pb.ListHostsRequest{
+				Catalog: &hostcatalogs.HostCatalog{
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								cred.ConstProjectId: structpb.NewStringValue("test-project-id"),
+								cred.ConstZone:      structpb.NewStringValue("us-central1-c"),
+							},
+						},
+					},
+				},
+				Persisted: &pb.HostCatalogPersisted{
+					Secrets: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							cred.ConstPrivateKeyId:         structpb.NewStringValue("test-private-key-id"),
+							cred.ConstPrivateKey:           structpb.NewStringValue("test-private-key"),
+							cred.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
+						},
+					},
+				},
+				Sets: []*hostsets.HostSet{
+					{
+						Id: "foobar",
+					},
+				},
+			},
+			expectedErr:     "set foobar missing attributes",
+			expectedErrCode: codes.InvalidArgument,
+		},
+		{
+			name: "set attribute load error",
+			req: &pb.ListHostsRequest{
+				Catalog: &hostcatalogs.HostCatalog{
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								cred.ConstProjectId: structpb.NewStringValue("test-project-id"),
+								cred.ConstZone:      structpb.NewStringValue("us-central1-c"),
+							},
+						},
+					},
+				},
+				Persisted: &pb.HostCatalogPersisted{
+					Secrets: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							cred.ConstPrivateKeyId:         structpb.NewStringValue("test-private-key-id"),
+							cred.ConstPrivateKey:           structpb.NewStringValue("test-private-key"),
+							cred.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
+						},
+					},
+				},
+				Sets: []*hostsets.HostSet{
+					{
+						Id: "foobar",
+						Attrs: &hostsets.HostSet_Attributes{
+							Attributes: &structpb.Struct{
+								Fields: map[string]*structpb.Value{
+									"foo": structpb.NewBoolValue(true),
+									"bar": structpb.NewBoolValue(true),
+								},
+							},
+						},
+					},
+				},
+			},
+			expectedErr:     "attributes.bar: unrecognized field, attributes.foo: unrecognized field",
+			expectedErrCode: codes.InvalidArgument,
+		},
+		{
+			name: "client load error",
+			req: &pb.ListHostsRequest{
+				Catalog: &hostcatalogs.HostCatalog{
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								cred.ConstProjectId: structpb.NewStringValue("test-project-id"),
+								cred.ConstZone:      structpb.NewStringValue("us-central1-c"),
+							},
+						},
+					},
+				},
+				Persisted: &pb.HostCatalogPersisted{
+					Secrets: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							cred.ConstPrivateKeyId:         structpb.NewStringValue("test-private-key-id"),
+							cred.ConstPrivateKey:           structpb.NewStringValue("test-private-key"),
+							cred.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
+						},
+					},
+				},
+				Sets: []*hostsets.HostSet{
+					{
+						Id: "foobar",
+						Attrs: &hostsets.HostSet_Attributes{
+							Attributes: &structpb.Struct{
+								Fields: map[string]*structpb.Value{
+									ConstListInstancesFilter: structpb.NewListValue(
+										&structpb.ListValue{
+											Values: []*structpb.Value{
+												structpb.NewStringValue("tag-key=foo"),
+											},
+										},
+									),
+								},
+							},
+						},
+					},
+				},
+			},
+			gcpOptions: []option.ClientOption{
+				option.WithHTTPClient(&http.Client{}),
+			},
+			expectedErr:     "error getting instances client",
+			expectedErrCode: codes.InvalidArgument,
+		},
+		{
+			name: "List instances error",
+			req: &pb.ListHostsRequest{
+				Catalog: &hostcatalogs.HostCatalog{
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								cred.ConstProjectId: structpb.NewStringValue("test-project-id"),
+								cred.ConstZone:      structpb.NewStringValue("us-central1-c"),
+							},
+						},
+					},
+				},
+				Persisted: &pb.HostCatalogPersisted{
+					Secrets: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							cred.ConstPrivateKeyId:         structpb.NewStringValue("test-private-key-id"),
+							cred.ConstPrivateKey:           structpb.NewStringValue("test-private-key"),
+							cred.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
+						},
+					},
+				},
+				Sets: []*hostsets.HostSet{
+					{
+						Id: "foobar",
+						Attrs: &hostsets.HostSet_Attributes{
+							Attributes: &structpb.Struct{
+								Fields: map[string]*structpb.Value{
+									ConstListInstancesFilter: structpb.NewListValue(
+										&structpb.ListValue{
+											Values: []*structpb.Value{
+												structpb.NewStringValue("tag-key=foo"),
+											},
+										},
+									),
+								},
+							},
+						},
+					},
+				},
+			},
+			catalogOpts: []gcpCatalogPersistedStateOption{
+				withTestInstancesAPIFunc(newTestMockInstances(ctx,
+					nil,
+					testMockInstancesWithListInstancesError(fmt.Errorf("error running DescribeInstances for host set id \"foobar\"")))),
+			},
+			expectedErr:     "error running list instances for host set id \"foobar\"",
+			expectedErrCode: codes.InvalidArgument,
+		},
+		{
+			name: "instanceToHost error",
+			req: &pb.ListHostsRequest{
+				Catalog: &hostcatalogs.HostCatalog{
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								cred.ConstProjectId: structpb.NewStringValue("test-project-id"),
+								cred.ConstZone:      structpb.NewStringValue("us-central1-c"),
+							},
+						},
+					},
+				},
+				Persisted: &pb.HostCatalogPersisted{
+					Secrets: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							cred.ConstPrivateKeyId:         structpb.NewStringValue("test-private-key-id"),
+							cred.ConstPrivateKey:           structpb.NewStringValue("test-private-key"),
+							cred.ConstCredsLastRotatedTime: structpb.NewStringValue("2006-01-02T15:04:05+07:00"),
+						},
+					},
+				},
+				Sets: []*hostsets.HostSet{
+					{
+						Id: "foobar",
+						Attrs: &hostsets.HostSet_Attributes{
+							Attributes: &structpb.Struct{
+								Fields: map[string]*structpb.Value{
+									ConstListInstancesFilter: structpb.NewListValue(
+										&structpb.ListValue{
+											Values: []*structpb.Value{
+												structpb.NewStringValue("tag-key=foo"),
+											},
+										},
+									),
+								},
+							},
+						},
+					},
+				},
+			},
+			catalogOpts: []gcpCatalogPersistedStateOption{
+				withTestInstancesAPIFunc(newTestMockInstances(ctx,
+					nil,
+					testMockInstancesWithListInstancesOutput(&computepb.InstanceList{
+						Items: []*computepb.Instance{
+							{
+								Name: pointer("boundary-0"),
+							},
+						},
+					}),
+					testMockInstancesWithListInstancesError(nil),
+				)),
+			},
+			expectedErr:     "error processing host results for host set id \"foobar\": response integrity error: missing instance id",
+			expectedErrCode: codes.InvalidArgument,
 		},
 		{
 			name: "get all three instances",
 			req: &pb.ListHostsRequest{
 				Catalog: &hostcatalogs.HostCatalog{
-					Attrs: hostCatalogAttributes,
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: wrapMap(t, map[string]interface{}{
+							cred.ConstZone:      "us-central1-c",
+							cred.ConstProjectId: "test-project",
+						}),
+					},
 				},
 				Sets: []*hostsets.HostSet{
 					{
@@ -99,15 +394,90 @@ func TestListHosts(t *testing.T) {
 					},
 				},
 			},
+			catalogOpts: []gcpCatalogPersistedStateOption{
+				withTestInstancesAPIFunc(newTestMockInstances(ctx,
+					nil,
+					testMockInstancesWithListInstancesOutput(&computepb.InstanceList{
+						Items: []*computepb.Instance{
+							{
+								Name: pointer("boundary-0"),
+								Id:   pointer(uint64(1)),
+								NetworkInterfaces: []*computepb.NetworkInterface{
+									{
+										AccessConfigs: []*computepb.AccessConfig{
+											{
+												NatIP:        pointer("101.1.1.1"),
+												ExternalIpv6: pointer("2001:db8::1"),
+											},
+										},
+										Ipv6AccessConfigs: []*computepb.AccessConfig{
+											{
+												ExternalIpv6: pointer("2001:db8::1"),
+											},
+										},
+									},
+								},
+							},
+							{
+								Name: pointer("boundary-1"),
+								Id:   pointer(uint64(2)),
+								NetworkInterfaces: []*computepb.NetworkInterface{
+									{
+										AccessConfigs: []*computepb.AccessConfig{
+											{
+												NatIP: pointer("102.1.1.1"),
+											},
+										},
+										Ipv6AccessConfigs: []*computepb.AccessConfig{
+											{
+												ExternalIpv6: pointer("2001:db8::2"),
+											},
+										},
+									},
+								},
+							},
+							{
+								Name: pointer("boundary-2"),
+								Id:   pointer(uint64(3)),
+								NetworkInterfaces: []*computepb.NetworkInterface{
+									{
+										AccessConfigs: []*computepb.AccessConfig{
+											{
+												NatIP:        pointer("103.1.1.1"),
+												ExternalIpv6: pointer("2001:db8::3"),
+											},
+										},
+										Ipv6AccessConfigs: []*computepb.AccessConfig{
+											{
+												ExternalIpv6: pointer("2001:db8::3"),
+											},
+										},
+									},
+								},
+							},
+						},
+					}),
+					testMockInstancesWithListInstancesError(nil),
+				)),
+			},
 			expected: []*pb.ListHostsResponseHost{
 				{
-					Name: "boundary-0",
+					SetIds:       []string{"get-all-instances"},
+					ExternalName: "boundary-0",
+					ExternalId:   "1",
+					IpAddresses:  []string{"101.1.1.1", "2001:db8::1"},
 				},
 				{
-					Name: "boundary-1",
+					SetIds:       []string{"get-all-instances"},
+					ExternalName: "boundary-1",
+					ExternalId:   "2",
+					IpAddresses:  []string{"102.1.1.1", "2001:db8::2"},
 				},
 				{
-					Name: "boundary-2",
+					SetIds:       []string{"get-all-instances"},
+					ExternalName: "boundary-2",
+					ExternalId:   "3",
+					IpAddresses:  []string{"103.1.1.1", "2001:db8::3"},
 				},
 			},
 		},
@@ -115,7 +485,12 @@ func TestListHosts(t *testing.T) {
 			name: "get one instance by name",
 			req: &pb.ListHostsRequest{
 				Catalog: &hostcatalogs.HostCatalog{
-					Attrs: hostCatalogAttributes,
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: wrapMap(t, map[string]interface{}{
+							cred.ConstZone:      "us-central1-c",
+							cred.ConstProjectId: "test-project",
+						}),
+					},
 				},
 				Sets: []*hostsets.HostSet{
 					{
@@ -128,38 +503,44 @@ func TestListHosts(t *testing.T) {
 					},
 				},
 			},
-			expected: []*pb.ListHostsResponseHost{
-				{
-					Name: "boundary-1",
-				},
-			},
-		},
-		{
-			name: "get instance group",
-			req: &pb.ListHostsRequest{
-				Catalog: &hostcatalogs.HostCatalog{
-					Attrs: hostCatalogAttributes,
-				},
-				Sets: []*hostsets.HostSet{
-					{
-						Id: "get-instance-group",
-						Attrs: &hostsets.HostSet_Attributes{
-							Attributes: wrapMap(t, map[string]interface{}{
-								ConstInstanceGroup: "boundary-servers",
-							}),
+			catalogOpts: []gcpCatalogPersistedStateOption{
+				withTestInstancesAPIFunc(newTestMockInstances(ctx,
+					nil,
+					testMockInstancesWithListInstancesOutput(&computepb.InstanceList{
+						Items: []*computepb.Instance{
+							{
+								Name: pointer("boundary-1"),
+								Id:   pointer(uint64(1)),
+								NetworkInterfaces: []*computepb.NetworkInterface{
+									{
+										AccessConfigs: []*computepb.AccessConfig{
+											{
+												NatIP:        pointer("102.1.1.1"),
+												ExternalIpv6: pointer("2001:db8::1"),
+											},
+										},
+										Ipv6AccessConfigs: []*computepb.AccessConfig{
+											{
+												ExternalIpv6: pointer("2001:db8::1"),
+											},
+										},
+									},
+								},
+							},
 						},
-					},
-				},
+					}),
+					testMockInstancesWithListInstancesError(nil),
+				)),
 			},
 			expected: []*pb.ListHostsResponseHost{
 				{
-					Name: "boundary-0",
-				},
-				{
-					Name: "boundary-1",
-				},
-				{
-					Name: "boundary-2",
+					SetIds:       []string{"get-one-instance-by-name"},
+					ExternalName: "boundary-1",
+					ExternalId:   "1",
+					IpAddresses: []string{
+						"102.1.1.1",
+						"2001:db8::1",
+					},
 				},
 			},
 		},
@@ -167,7 +548,12 @@ func TestListHosts(t *testing.T) {
 			name: "get two specific instances with two host sets",
 			req: &pb.ListHostsRequest{
 				Catalog: &hostcatalogs.HostCatalog{
-					Attrs: hostCatalogAttributes,
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: wrapMap(t, map[string]interface{}{
+							cred.ConstZone:      "us-central1-c",
+							cred.ConstProjectId: "test-project",
+						}),
+					},
 				},
 				Sets: []*hostsets.HostSet{
 					{
@@ -188,86 +574,70 @@ func TestListHosts(t *testing.T) {
 					},
 				},
 			},
-			expected: []*pb.ListHostsResponseHost{
-				{
-					Name: "boundary-0",
-				},
-				{
-					Name: "boundary-2",
-				},
-			},
-		},
-		{
-			name: "get one instance and an instance group in two host sets",
-			req: &pb.ListHostsRequest{
-				Catalog: &hostcatalogs.HostCatalog{
-					Attrs: hostCatalogAttributes,
-				},
-				Sets: []*hostsets.HostSet{
-					{
-						Id: "get-one-instance-by-name",
-						Attrs: &hostsets.HostSet_Attributes{
-							Attributes: wrapMap(t, map[string]interface{}{
-								ConstListInstancesFilter: "name = boundary-1",
-							}),
+			catalogOpts: []gcpCatalogPersistedStateOption{
+				withTestInstancesAPIFunc(newTestMockInstances(ctx,
+					nil,
+					testMockInstancesWithListInstancesOutput(&computepb.InstanceList{
+						Items: []*computepb.Instance{
+							{
+								Name: pointer("boundary-1"),
+								Id:   pointer(uint64(1)),
+								NetworkInterfaces: []*computepb.NetworkInterface{
+									{
+										AccessConfigs: []*computepb.AccessConfig{
+											{
+												NatIP: pointer("102.1.1.1"),
+											},
+										},
+									},
+								},
+							},
+							{
+								Name: pointer("boundary-2"),
+								Id:   pointer(uint64(2)),
+								NetworkInterfaces: []*computepb.NetworkInterface{
+									{
+										AccessConfigs: []*computepb.AccessConfig{
+											{
+												NatIP: pointer("103.1.1.1"),
+											},
+										},
+										Ipv6AccessConfigs: []*computepb.AccessConfig{
+											{
+												ExternalIpv6: pointer("2001:db8::1"),
+											},
+										},
+									},
+								},
+							},
 						},
-					},
-					{
-						Id: "get-instance-group",
-						Attrs: &hostsets.HostSet_Attributes{
-							Attributes: wrapMap(t, map[string]interface{}{
-								ConstInstanceGroup: "boundary-servers",
-							}),
-						},
-					},
-				},
-			},
-			expected: []*pb.ListHostsResponseHost{
-				{
-					Name: "boundary-0",
-				},
-				{
-					Name: "boundary-1",
-				},
-				{
-					Name: "boundary-2",
-				},
-			},
-		},
-		{
-			name: "get an instance group and one instance in two host sets",
-			req: &pb.ListHostsRequest{
-				Catalog: &hostcatalogs.HostCatalog{
-					Attrs: hostCatalogAttributes,
-				},
-				Sets: []*hostsets.HostSet{
-					{
-						Id: "get-instance-group",
-						Attrs: &hostsets.HostSet_Attributes{
-							Attributes: wrapMap(t, map[string]interface{}{
-								ConstInstanceGroup: "boundary-servers",
-							}),
-						},
-					},
-					{
-						Id: "get-one-instance-by-name",
-						Attrs: &hostsets.HostSet_Attributes{
-							Attributes: wrapMap(t, map[string]interface{}{
-								ConstListInstancesFilter: "name = boundary-2",
-							}),
-						},
-					},
-				},
+					}),
+					testMockInstancesWithListInstancesError(nil),
+				)),
 			},
 			expected: []*pb.ListHostsResponseHost{
 				{
-					Name: "boundary-0",
+					SetIds: []string{
+						"get-one-instance-by-name-0",
+						"get-one-instance-by-name-2",
+					},
+					ExternalId:   "1",
+					ExternalName: "boundary-1",
+					IpAddresses: []string{
+						"102.1.1.1",
+					},
 				},
 				{
-					Name: "boundary-1",
-				},
-				{
-					Name: "boundary-2",
+					SetIds: []string{
+						"get-one-instance-by-name-0",
+						"get-one-instance-by-name-2",
+					},
+					ExternalId:   "2",
+					ExternalName: "boundary-2",
+					IpAddresses: []string{
+						"103.1.1.1",
+						"2001:db8::1",
+					},
 				},
 			},
 		},
@@ -275,7 +645,12 @@ func TestListHosts(t *testing.T) {
 			name: "invalid filter",
 			req: &pb.ListHostsRequest{
 				Catalog: &hostcatalogs.HostCatalog{
-					Attrs: hostCatalogAttributes,
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: wrapMap(t, map[string]interface{}{
+							cred.ConstZone:      "us-central1-c",
+							cred.ConstProjectId: "test-project",
+						}),
+					},
 				},
 				Sets: []*hostsets.HostSet{
 					{
@@ -288,7 +663,8 @@ func TestListHosts(t *testing.T) {
 					},
 				},
 			},
-			expectedErr: "Invalid list filter expression",
+			expectedErr:     "error building filters: filter \"not-a-filter\" contains invalid operator",
+			expectedErrCode: codes.InvalidArgument,
 		},
 	}
 
@@ -297,14 +673,20 @@ func TestListHosts(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			require := require.New(t)
 
+			p := &HostPlugin{
+				testGCPClientOpts:    tc.gcpOptions,
+				testCatalogStateOpts: tc.catalogOpts,
+			}
+
 			actual, err := p.ListHosts(ctx, tc.req)
 			if tc.expectedErr != "" {
 				require.Contains(err.Error(), tc.expectedErr)
+				require.Equal(status.Code(err).String(), tc.expectedErrCode.String())
 				return
 			}
-
 			require.NoError(err)
 			require.Equal(len(tc.expected), len(actual.GetHosts()))
+			require.Equal(tc.expected, actual.GetHosts())
 		})
 	}
 }
