@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"cloud.google.com/go/compute/apiv1/computepb"
 	"cloud.google.com/go/iam/admin/apiv1/adminpb"
@@ -535,66 +536,268 @@ func TestCreateCatalog(t *testing.T) {
 }
 
 func TestUpdateCatalog(t *testing.T) {
-	t.Skip("TODO: this needs a secrets file to run - maybe only manually?")
 	ctx := context.Background()
-	p := &HostPlugin{}
-
-	wd, err := os.Getwd()
-	require.NoError(t, err)
-	require.NotEmpty(t, wd)
-	project, err := parseutil.ParsePath("file://" + filepath.Join(wd, "secrets", "project"))
-	require.NoError(t, err)
-	zone, err := parseutil.ParsePath("file://" + filepath.Join(wd, "secrets", "zone"))
-	require.NoError(t, err)
-
-	hostCatalogAttributes := &hostcatalogs.HostCatalog_Attributes{
-		Attributes: wrapMap(t, map[string]interface{}{
-			cred.ConstProjectId: project,
-			cred.ConstZone:      zone,
-		}),
-	}
-
-	require.NoError(t, err)
 
 	cases := []struct {
 		name        string
-		req         *pb.OnCreateCatalogRequest
-		expected    *pb.HostCatalogPersisted
+		req         *pb.OnUpdateCatalogRequest
+		catalogOpts []gcpCatalogPersistedStateOption
+		expectedRsp *pb.OnUpdateCatalogResponse
 		expectedErr string
 	}{
 		{
-			name:        "nil catalog",
-			req:         &pb.OnCreateCatalogRequest{},
-			expectedErr: "catalog is nil",
+			name:        "nil current catalog",
+			req:         &pb.OnUpdateCatalogRequest{},
+			expectedErr: "current catalog is required",
+		},
+		{
+			name: "nil new catalog",
+			req: &pb.OnUpdateCatalogRequest{
+				CurrentCatalog: &hostcatalogs.HostCatalog{},
+			},
+			expectedErr: "new catalog is required",
 		},
 		{
 			name: "nil attributes",
-			req: &pb.OnCreateCatalogRequest{
-				Catalog: &hostcatalogs.HostCatalog{},
+			req: &pb.OnUpdateCatalogRequest{
+				CurrentCatalog: &hostcatalogs.HostCatalog{},
+				NewCatalog:     &hostcatalogs.HostCatalog{},
 			},
 			expectedErr: "attributes are required",
 		},
 		{
 			name: "error reading attributes",
-			req: &pb.OnCreateCatalogRequest{
-				Catalog: &hostcatalogs.HostCatalog{
+			req: &pb.OnUpdateCatalogRequest{
+				CurrentCatalog: &hostcatalogs.HostCatalog{
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: new(structpb.Struct),
+					},
+				},
+				NewCatalog: &hostcatalogs.HostCatalog{
 					Attrs: &hostcatalogs.HostCatalog_Attributes{
 						Attributes: new(structpb.Struct),
 					},
 				},
 			},
-			expectedErr: "attributes.project: missing required value \"project\"",
+			expectedErr: "attributes.project_id: missing required value \"project_id\"",
 		},
 		{
-			name: "do not persist secrets, use gcloud ADC",
-			req: &pb.OnCreateCatalogRequest{
-				Catalog: &hostcatalogs.HostCatalog{
-					Attrs: hostCatalogAttributes,
+			name: "staticCredentialToStaticRotated",
+			req: &pb.OnUpdateCatalogRequest{
+				CurrentCatalog: &hostcatalogs.HostCatalog{
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								cred.ConstProjectId:                 structpb.NewStringValue("test-project"),
+								cred.ConstClientEmail:               structpb.NewStringValue("test@example.com"),
+								cred.ConstZone:                      structpb.NewStringValue("us-central1-a"),
+								cred.ConstDisableCredentialRotation: structpb.NewBoolValue(true),
+							},
+						},
+					},
+				},
+				NewCatalog: &hostcatalogs.HostCatalog{
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								cred.ConstProjectId:   structpb.NewStringValue("test-project"),
+								cred.ConstZone:        structpb.NewStringValue("us-central1-a"),
+								cred.ConstClientEmail: structpb.NewStringValue("test@example.com"),
+							},
+						},
+					},
+					Secrets: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							cred.ConstPrivateKeyId: structpb.NewStringValue("new-private-key-id"),
+							cred.ConstPrivateKey:   structpb.NewStringValue("new-private-key"),
+						},
+					},
+				},
+				Persisted: &pb.HostCatalogPersisted{
+					Secrets: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							cred.ConstPrivateKeyId:         structpb.NewStringValue("persisted-private-key-id"),
+							cred.ConstPrivateKey:           structpb.NewStringValue("persisted-private-key"),
+							cred.ConstCredsLastRotatedTime: structpb.NewStringValue(time.Time{}.Format(time.RFC3339Nano)),
+						},
+					},
 				},
 			},
-			expected: &pb.HostCatalogPersisted{
-				Secrets: nil,
+			catalogOpts: []gcpCatalogPersistedStateOption{
+				withTestInstancesAPIFunc(newTestMockInstances(ctx,
+					nil,
+					testMockInstancesWithListInstancesOutput(&computepb.InstanceList{}),
+					testMockInstancesWithListInstancesError(nil),
+				)),
 			},
+			expectedRsp: &pb.OnUpdateCatalogResponse{
+				Persisted: &pb.HostCatalogPersisted{
+					Secrets: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							cred.ConstPrivateKeyId: structpb.NewStringValue("updated-private-key-id"),
+							cred.ConstPrivateKey:   structpb.NewStringValue("updated-private-key"),
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "staticRotatedCredentialToStatic",
+			req: &pb.OnUpdateCatalogRequest{
+				CurrentCatalog: &hostcatalogs.HostCatalog{
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								cred.ConstProjectId:   structpb.NewStringValue("test-project"),
+								cred.ConstClientEmail: structpb.NewStringValue("test@example.com"),
+								cred.ConstZone:        structpb.NewStringValue("us-central1-a"),
+							},
+						},
+					},
+				},
+				NewCatalog: &hostcatalogs.HostCatalog{
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								cred.ConstProjectId:                 structpb.NewStringValue("test-project"),
+								cred.ConstZone:                      structpb.NewStringValue("us-central1-a"),
+								cred.ConstClientEmail:               structpb.NewStringValue("test@example.com"),
+								cred.ConstDisableCredentialRotation: structpb.NewBoolValue(true),
+							},
+						},
+					},
+					Secrets: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							cred.ConstPrivateKeyId: structpb.NewStringValue("not-rotated-private-key-id"),
+							cred.ConstPrivateKey:   structpb.NewStringValue("not-rotated-private-key"),
+						},
+					},
+				},
+				Persisted: &pb.HostCatalogPersisted{
+					Secrets: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							cred.ConstPrivateKeyId:         structpb.NewStringValue("persisted-private-key-id"),
+							cred.ConstPrivateKey:           structpb.NewStringValue("persisted-private-key"),
+							cred.ConstCredsLastRotatedTime: structpb.NewStringValue(time.Now().Format(time.RFC3339Nano)),
+						},
+					},
+				},
+			},
+			catalogOpts: []gcpCatalogPersistedStateOption{
+				withTestInstancesAPIFunc(newTestMockInstances(ctx,
+					nil,
+					testMockInstancesWithListInstancesOutput(&computepb.InstanceList{}),
+					testMockInstancesWithListInstancesError(nil),
+				)),
+			},
+			expectedRsp: &pb.OnUpdateCatalogResponse{
+				Persisted: &pb.HostCatalogPersisted{
+					Secrets: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							cred.ConstPrivateKeyId: structpb.NewStringValue("not-rotated-private-key-id"),
+							cred.ConstPrivateKey:   structpb.NewStringValue("not-rotated-private-key"),
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "staticCredentialToImpersonateCredential",
+			req: &pb.OnUpdateCatalogRequest{
+				CurrentCatalog: &hostcatalogs.HostCatalog{
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								cred.ConstProjectId:                 structpb.NewStringValue("test-project"),
+								cred.ConstClientEmail:               structpb.NewStringValue("test@example.com"),
+								cred.ConstZone:                      structpb.NewStringValue("us-central1-a"),
+								cred.ConstDisableCredentialRotation: structpb.NewBoolValue(true),
+							},
+						},
+					},
+				},
+				NewCatalog: &hostcatalogs.HostCatalog{
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								cred.ConstProjectId:                 structpb.NewStringValue("test-project"),
+								cred.ConstZone:                      structpb.NewStringValue("us-central1-a"),
+								cred.ConstClientEmail:               structpb.NewStringValue("test@example.com"),
+								cred.ConstTargetServiceAccountID:    structpb.NewStringValue("test-target-service-account-id"),
+								cred.ConstDisableCredentialRotation: structpb.NewBoolValue(true),
+							},
+						},
+					},
+					Secrets: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							cred.ConstPrivateKeyId: structpb.NewStringValue("new-private-key-id"),
+							cred.ConstPrivateKey:   structpb.NewStringValue("new-private-key"),
+						},
+					},
+				},
+				Persisted: &pb.HostCatalogPersisted{
+					Secrets: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							cred.ConstPrivateKeyId:         structpb.NewStringValue("persisted-private-key-id"),
+							cred.ConstPrivateKey:           structpb.NewStringValue("persisted-private-key"),
+							cred.ConstCredsLastRotatedTime: structpb.NewStringValue(time.Time{}.Format(time.RFC3339Nano)),
+						},
+					},
+				},
+			},
+			catalogOpts: []gcpCatalogPersistedStateOption{
+				withTestInstancesAPIFunc(newTestMockInstances(ctx,
+					nil,
+					testMockInstancesWithListInstancesOutput(&computepb.InstanceList{}),
+					testMockInstancesWithListInstancesError(nil),
+				)),
+			},
+			expectedRsp: &pb.OnUpdateCatalogResponse{
+				Persisted: &pb.HostCatalogPersisted{
+					Secrets: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							cred.ConstPrivateKeyId: structpb.NewStringValue("new-private-key-id"),
+							cred.ConstPrivateKey:   structpb.NewStringValue("new-private-key"),
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "staticRotatedCredentialToAppDefaultCredential",
+			req: &pb.OnUpdateCatalogRequest{
+				CurrentCatalog: &hostcatalogs.HostCatalog{
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								cred.ConstProjectId:   structpb.NewStringValue("test-project"),
+								cred.ConstClientEmail: structpb.NewStringValue("test@example.com"),
+								cred.ConstZone:        structpb.NewStringValue("us-central1-a"),
+							},
+						},
+					},
+				},
+				NewCatalog: &hostcatalogs.HostCatalog{
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								cred.ConstProjectId: structpb.NewStringValue("test-project"),
+								cred.ConstZone:      structpb.NewStringValue("us-central1-a"),
+							},
+						},
+					},
+				},
+				Persisted: &pb.HostCatalogPersisted{
+					Secrets: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							cred.ConstPrivateKeyId:         structpb.NewStringValue("persisted-private-key-id"),
+							cred.ConstPrivateKey:           structpb.NewStringValue("persisted-private-key"),
+							cred.ConstCredsLastRotatedTime: structpb.NewStringValue(time.Time{}.Format(time.RFC3339Nano)),
+						},
+					},
+				},
+			},
+			expectedErr: "cannot rotate credentials for non-rotatable credentials",
 		},
 	}
 
@@ -602,14 +805,41 @@ func TestUpdateCatalog(t *testing.T) {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			require := require.New(t)
-			actual, err := p.OnCreateCatalog(ctx, tc.req)
+
+			testIAMAdminServer := cred.NewTestIAMAdminServer(nil, nil)
+			testResourceServer := cred.NewTestResourceServer(&iampb.TestIamPermissionsResponse{
+				Permissions: []string{
+					cred.ComputeInstancesListPermission,
+					cred.IAMServiceAccountKeysCreatePermission,
+					cred.IAMServiceAccountKeysDeletePermission,
+				},
+			}, nil)
+
+			gsrv := cred.NewGRPCServer()
+			adminpb.RegisterIAMServer(gsrv.Server, testIAMAdminServer)
+			resourcemanagerpb.RegisterProjectsServer(gsrv.Server, testResourceServer)
+			addr, err := gsrv.Start()
+			require.NoError(err)
+
+			p := &HostPlugin{
+				testGCPClientOpts: []option.ClientOption{
+					option.WithEndpoint(addr),
+					option.WithoutAuthentication(),
+					option.WithGRPCDialOption(grpc.WithTransportCredentials(insecure.NewCredentials())),
+					option.WithTokenSource(nil),
+				},
+				testCatalogStateOpts: tc.catalogOpts,
+			}
+
+			actual, err := p.OnUpdateCatalog(ctx, tc.req)
 			if tc.expectedErr != "" {
 				require.Contains(err.Error(), tc.expectedErr)
 				return
 			}
-
 			require.NoError(err)
-			require.Equal(actual.GetPersisted().Secrets, tc.expected.GetSecrets())
+
+			delete(actual.GetPersisted().GetSecrets().GetFields(), cred.ConstCredsLastRotatedTime)
+			require.Empty(cmp.Diff(tc.expectedRsp, actual, protocmp.Transform()))
 		})
 	}
 }

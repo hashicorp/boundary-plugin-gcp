@@ -45,6 +45,7 @@ func TestToProto(t *testing.T) {
 		CredentialsConfig: &credential.Config{
 			PrivateKey:   "test-private-key",
 			PrivateKeyId: "test-private-key-id",
+			ClientEmail:  "test@test.com",
 		},
 		CredsLastRotatedTime: lastRotatedTime,
 	},

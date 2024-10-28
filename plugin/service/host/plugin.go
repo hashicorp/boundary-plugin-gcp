@@ -100,23 +100,125 @@ func (p *HostPlugin) OnCreateCatalog(ctx context.Context, req *pb.OnCreateCatalo
 }
 
 // OnUpdateCatalog is called when a dynamic host catalog is updated.
-func (p *HostPlugin) OnUpdateCatalog(_ context.Context, req *pb.OnUpdateCatalogRequest) (*pb.OnUpdateCatalogResponse, error) {
+func (p *HostPlugin) OnUpdateCatalog(ctx context.Context, req *pb.OnUpdateCatalogRequest) (*pb.OnUpdateCatalogResponse, error) {
 	currentCatalog := req.GetCurrentCatalog()
 	if currentCatalog == nil {
-		return nil, status.Error(codes.FailedPrecondition, "current catalog is nil")
+		return nil, status.Errorf(codes.InvalidArgument, "current catalog is required")
+	}
+	newCatalog := req.GetNewCatalog()
+	if newCatalog == nil {
+		return nil, status.Errorf(codes.InvalidArgument, "new catalog is required")
 	}
 
-	secrets := req.GetNewCatalog().GetSecrets()
-	if secrets == nil {
-		// If new secrets weren't passed in, don't rotate what we have on
-		// update.
-		return &pb.OnUpdateCatalogResponse{}, nil
+	oldAttrs := currentCatalog.GetAttributes()
+	if oldAttrs == nil {
+		return nil, status.Errorf(codes.InvalidArgument, "old catalog attributes are required")
+	}
+	oldCatalogAttributes, err := getCatalogAttributes(oldAttrs)
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "error getting old catalog attributes: %s", err)
+	}
+	newAttrs := newCatalog.GetAttributes()
+	if newAttrs == nil {
+		return nil, status.Errorf(codes.InvalidArgument, "new catalog attributes are required")
+	}
+	newCatalogAttributes, err := getCatalogAttributes(newAttrs)
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "error getting new catalog attributes: %s", err)
+	}
+
+	credState, err := credential.PersistedStateFromProto(
+		req.GetPersisted().GetSecrets(),
+		oldCatalogAttributes.CredentialAttributes,
+	)
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "error getting persisted state from proto: %s", err)
+	}
+
+	updatedCredentials, err := credential.GetCredentialsConfig(newCatalog.GetSecrets(), newCatalogAttributes.CredentialAttributes)
+	if err != nil {
+		return nil, err
+	}
+
+	if newCatalog.GetSecrets() != nil {
+		newCredState, err := credential.NewPersistedState([]credential.Option{
+			credential.WithCredentialsConfig(updatedCredentials),
+		}...,
+		)
+		if err != nil {
+			return nil, status.Error(codes.Internal, fmt.Sprintf("error creating new persisted state: %s", err))
+		}
+		newCatalogState, err := newGCPCatalogPersistedState(
+			append([]gcpCatalogPersistedStateOption{
+				withCredentials(newCredState),
+			}, p.testCatalogStateOpts...)...,
+		)
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "error setting up persisted state: %s", err)
+		}
+		if st := dryRunValidation(ctx, newCatalogState); st != nil {
+			return nil, st.Err()
+		}
+
+		// Replace the existing credential state.
+		// This checks the timestamp on the last rotation time as well
+		// and deletes the credentials if we are managing them
+		// (ie: if we've rotated them before).
+		if err := credState.ReplaceCreds(ctx, updatedCredentials, p.testGCPClientOpts...); err != nil {
+			return nil, err
+		}
+	}
+
+	if credState.CredentialsConfig.IsRotatable() {
+		if !updatedCredentials.IsRotatable() && !newCatalogAttributes.DisableCredentialRotation {
+			return nil, status.Error(codes.InvalidArgument, "cannot rotate credentials for non-rotatable credentials")
+		}
+
+		// This is a validate check to make sure that we aren't disabling
+		// rotation for credentials currently being managed by rotation.
+		// This is not allowed.
+		if newCatalogAttributes.DisableCredentialRotation && newCatalog.GetSecrets() == nil {
+			if !credState.CredsLastRotatedTime.IsZero() {
+				return nil, status.Error(codes.InvalidArgument, "cannot disable credential rotation for credentials currently being rotated")
+			}
+		}
+
+		permissions := []string{
+			credential.ComputeInstancesListPermission,
+			credential.IAMServiceAccountKeysCreatePermission,
+			credential.IAMServiceAccountKeysDeletePermission,
+		}
+
+		// If we're enabling rotation now but didn't before, or have
+		// freshly replaced credentials, we can rotate here.
+		if !newCatalogAttributes.DisableCredentialRotation && credState.CredsLastRotatedTime.IsZero() {
+			if err := credState.CredentialsConfig.RotateServiceAccountKey(ctx, permissions, p.testGCPClientOpts...); err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	catalogState, err := newGCPCatalogPersistedState(
+		append([]gcpCatalogPersistedStateOption{
+			withCredentials(credState),
+		}, p.testCatalogStateOpts...)...,
+	)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "error setting up persisted state: %s", err)
+	}
+
+	// perform dry run to ensure we can interact with GCP as expected.
+	if st := dryRunValidation(ctx, catalogState, p.testGCPClientOpts...); st != nil {
+		return nil, st.Err()
+	}
+
+	persistedProto, err := catalogState.toProto()
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "error converting state to proto: %s", err)
 	}
 
 	return &pb.OnUpdateCatalogResponse{
-		Persisted: &pb.HostCatalogPersisted{
-			Secrets: nil,
-		},
+		Persisted: persistedProto,
 	}, nil
 }
 

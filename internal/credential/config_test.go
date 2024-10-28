@@ -383,3 +383,65 @@ func TestIsRotatable(t *testing.T) {
 		})
 	}
 }
+
+func TestNewConfig(t *testing.T) {
+	tests := []struct {
+		name        string
+		options     []Option
+		expected    *Config
+		expectError bool
+	}{
+		{
+			name: "Valid Options",
+			options: []Option{
+				WithProjectId("test-project-id"),
+				WithPrivateKey("test-private-key"),
+				WithPrivateKeyId("test-private-key-id"),
+				WithClientEmail("test-email@example.com"),
+				WithTargetServiceAccountId("target-service-account@example.com"),
+				WithZone("test-zone"),
+				WithScopes([]string{"scope1", "scope2"}),
+			},
+			expected: &Config{
+				ProjectId:              "test-project-id",
+				PrivateKey:             "test-private-key",
+				PrivateKeyId:           "test-private-key-id",
+				ClientEmail:            "test-email@example.com",
+				TargetServiceAccountId: "target-service-account@example.com",
+				Zone:                   "test-zone",
+				Scopes:                 []string{"scope1", "scope2"},
+			},
+			expectError: false,
+		},
+		{
+			name:        "No Options",
+			options:     []Option{},
+			expected:    &Config{},
+			expectError: false,
+		},
+		{
+			name: "Invalid Option",
+			options: []Option{
+				func(opts *Options) error {
+					return errors.New("invalid option")
+				},
+			},
+			expected:    nil,
+			expectError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			config, err := NewConfig(tt.options...)
+			if tt.expectError {
+				require.Error(t, err)
+				require.Nil(t, config)
+				return
+			}
+			require.NoError(t, err)
+			require.NotNil(t, config)
+			require.Equal(t, tt.expected, config)
+		})
+	}
+}

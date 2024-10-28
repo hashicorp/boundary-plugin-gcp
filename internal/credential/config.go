@@ -55,6 +55,26 @@ type credentials struct {
 	PrivateKeyId string `json:"private_key_id"`
 }
 
+// NewConfig creates a new GCP credential configuration
+// based on the provided options.
+// If the options are invalid, it will return an error.
+func NewConfig(opt ...Option) (*Config, error) {
+	opts, err := getOpts(opt...)
+	if err != nil {
+		return nil, err
+	}
+	c := &Config{
+		ProjectId:              opts.WithProjectId,
+		PrivateKey:             opts.WithPrivateKey,
+		PrivateKeyId:           opts.WithPrivateKeyId,
+		ClientEmail:            opts.WithClientEmail,
+		TargetServiceAccountId: opts.WithTargetServiceAccountId,
+		Zone:                   opts.WithZone,
+		Scopes:                 opts.WithScopes,
+	}
+	return c, nil
+}
+
 // toCredentials converts the config to credentials.
 func (c *Config) toCredentials() *credentials {
 	return &credentials{

@@ -112,6 +112,43 @@ func (c *Config) RotateServiceAccountKey(ctx context.Context, permissions []stri
 	return nil
 }
 
+func (c *Config) DeletePrivateKey(ctx context.Context, opts ...option.ClientOption) error {
+	if c.PrivateKey == "" {
+		return status.Error(codes.InvalidArgument, "cannot delete credentials when private key is not set")
+	}
+	if c.PrivateKeyId == "" {
+		return status.Error(codes.InvalidArgument, "cannot delete credentials when private key ID is not set")
+	}
+	if c.ClientEmail == "" {
+		return status.Error(codes.InvalidArgument, "cannot delete credentials when client email is not set")
+	}
+
+	creds, err := c.GenerateCredentials(ctx)
+	if err != nil {
+		return status.Errorf(codes.Unauthenticated, "error generating credentials: %v", err)
+	}
+	if creds.TokenSource == nil {
+		return status.Error(codes.Unauthenticated, "error generating credentials: token source is nil")
+	}
+
+	clientOptions := []option.ClientOption{option.WithTokenSource(creds.TokenSource)}
+	clientOptions = append(clientOptions, opts...)
+
+	iamClient, err := admin.NewIamClient(ctx, clientOptions...)
+	if err != nil {
+		return status.Errorf(codes.Internal, "error creating IAM client: %v", err)
+	}
+
+	err = iamClient.DeleteServiceAccountKey(ctx, &adminpb.DeleteServiceAccountKeyRequest{
+		Name: fmt.Sprintf("projects/-/serviceAccounts/%s/keys/%s", c.ClientEmail, c.PrivateKeyId),
+	})
+	if err != nil {
+		return status.Errorf(codes.Internal, "error deleting service account key: %v", err)
+	}
+
+	return nil
+}
+
 // ValidateIamPermissions tests the IAM permissions for the credentials.
 // It returns the granted permissions if successful.
 func (c *Config) ValidateIamPermissions(ctx context.Context, permissions []string, opts ...option.ClientOption) ([]string, error) {
