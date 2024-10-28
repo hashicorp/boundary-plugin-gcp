@@ -9,7 +9,6 @@ import (
 	"regexp"
 	"strings"
 
-	compute "cloud.google.com/go/compute/apiv1"
 	computepb "cloud.google.com/go/compute/apiv1/computepb"
 	"github.com/hashicorp/boundary-plugin-gcp/internal/credential"
 	errors "github.com/hashicorp/boundary-plugin-gcp/internal/errors"
@@ -37,6 +36,13 @@ type HostPlugin struct {
 var (
 	_ pb.HostPluginServiceServer = (*HostPlugin)(nil)
 )
+
+type hostSetQuery struct {
+	Id             string
+	InputInstances *computepb.ListInstancesRequest
+	Output         []*computepb.Instance
+	OutputHosts    []*pb.ListHostsResponseHost
+}
 
 const (
 	// defaultStatusFilter is the default filter to apply to instances
@@ -380,10 +386,64 @@ func (p *HostPlugin) OnCreateSet(ctx context.Context, req *pb.OnCreateSetRequest
 }
 
 // OnUpdateSet is called when a dynamic host set is updated.
-func (p *HostPlugin) OnUpdateSet(_ context.Context, req *pb.OnUpdateSetRequest) (*pb.OnUpdateSetResponse, error) {
-	if err := validateSet(req.GetNewSet()); err != nil {
+func (p *HostPlugin) OnUpdateSet(ctx context.Context, req *pb.OnUpdateSetRequest) (*pb.OnUpdateSetResponse, error) {
+	catalog := req.GetCatalog()
+	if catalog == nil {
+		return nil, status.Error(codes.InvalidArgument, "catalog is required")
+	}
+
+	attrs := catalog.GetAttributes()
+	if attrs == nil {
+		return nil, status.Error(codes.InvalidArgument, "catalog attributes are required")
+	}
+
+	catalogAttributes, err := getCatalogAttributes(attrs)
+	if err != nil {
 		return nil, err
 	}
+
+	credState, err := credential.PersistedStateFromProto(
+		req.GetPersisted().GetSecrets(),
+		catalogAttributes.CredentialAttributes)
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "error getting persisted state from proto: %s", err)
+	}
+
+	catalogState, err := newGCPCatalogPersistedState(
+		append([]gcpCatalogPersistedStateOption{
+			withCredentials(credState),
+		}, p.testCatalogStateOpts...)...,
+	)
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "error loading persisted state: %s", err)
+	}
+
+	set := req.GetNewSet()
+	if set == nil {
+		return nil, status.Error(codes.InvalidArgument, "set is required")
+	}
+	if err := validateSet(set); err != nil {
+		return nil, err
+	}
+
+	if set.GetAttributes() == nil {
+		return nil, status.Error(codes.InvalidArgument, "set attributes are required")
+	}
+	setAttrs, err := getSetAttributes(set.GetAttributes())
+	if err != nil {
+		return nil, err
+	}
+
+	listInstanceFilters, err := buildFilters(setAttrs)
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "error building filters: %s", err)
+	}
+
+	// perform dry run to ensure we can interact with GCP as expected.
+	if st := dryRunValidation(ctx, catalogState, listInstanceFilters, p.testGCPClientOpts...); st != nil {
+		return nil, st.Err()
+	}
+
 	return &pb.OnUpdateSetResponse{}, nil
 }
 
@@ -409,19 +469,25 @@ func (p *HostPlugin) ListHosts(ctx context.Context, req *pb.ListHostsRequest) (*
 		return nil, err
 	}
 
+	credState, err := credential.PersistedStateFromProto(
+		req.GetPersisted().GetSecrets(),
+		catalogAttributes.CredentialAttributes)
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "error getting persisted state from proto: %s", err)
+	}
+
+	catalogState, err := newGCPCatalogPersistedState(
+		append([]gcpCatalogPersistedStateOption{
+			withCredentials(credState),
+		}, p.testCatalogStateOpts...)...,
+	)
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "error loading persisted state: %s", err)
+	}
+
 	sets := req.GetSets()
 	if sets == nil {
 		return nil, status.Error(codes.InvalidArgument, "sets is nil")
-	}
-
-	type hostSetQuery struct {
-		Id             string
-		InputInstances *computepb.ListInstancesRequest
-		InputGroups    *computepb.ListInstancesInstanceGroupsRequest
-		Project        string
-		Zone           string
-		Output         []*computepb.Instance
-		OutputHosts    []*pb.ListHostsResponseHost
 	}
 
 	queries := make([]hostSetQuery, len(sets))
@@ -432,56 +498,35 @@ func (p *HostPlugin) ListHosts(ctx context.Context, req *pb.ListHostsRequest) (*
 		}
 
 		if set.GetAttributes() == nil {
-			return nil, status.Error(codes.InvalidArgument, "set missing attributes")
+			return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("set %s missing attributes", set.GetId()))
 		}
 		setAttrs, err := getSetAttributes(set.GetAttributes())
 		if err != nil {
 			return nil, err
 		}
 
-		if setAttrs.InstanceGroup != "" {
-			queries[i] = hostSetQuery{
-				Id:          set.GetId(),
-				InputGroups: buildListInstanceGroupsRequest(setAttrs, catalogAttributes),
-			}
-		} else {
-			queries[i] = hostSetQuery{
-				Id:             set.GetId(),
-				InputInstances: buildListInstancesRequest(setAttrs, catalogAttributes),
-			}
+		input, err := buildListInstancesRequest(setAttrs, catalogAttributes)
+		if err != nil {
+			return nil, status.Errorf(codes.InvalidArgument, "error building list instances request: %s", err)
+		}
+
+		queries[i] = hostSetQuery{
+			Id:             set.GetId(),
+			InputInstances: input,
 		}
 	}
 
-	instancesClient, err := compute.NewInstancesRESTClient(ctx)
+	instancesClient, err := catalogState.InstancesClient(ctx, p.testGCPClientOpts...)
 	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "error creating NewInstancesRESTClient: %s", err)
-	}
-
-	instanceGroupsClient, err := compute.NewInstanceGroupsRESTClient(ctx)
-	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "error creating NewInstanceGroupsRESTClient: %s", err)
-	}
-
-	gclient := GoogleClient{
-		InstancesClient:     instancesClient,
-		InstanceGroupClient: instanceGroupsClient,
-		Context:             ctx,
+		return nil, status.Errorf(codes.InvalidArgument, "error getting instances client: %s", err)
 	}
 
 	// Run all queries now and assemble output.
 	var maxLen int
 	for i, query := range queries {
-		var output []*computepb.Instance
-		if query.InputGroups != nil {
-			output, err = gclient.getInstancesForInstanceGroup(query.InputGroups)
-			if err != nil {
-				return nil, status.Errorf(codes.InvalidArgument, "error running getInstancesForInstanceGroup for host set id %q: %s", query.Id, err)
-			}
-		} else {
-			output, err = gclient.getInstances(query.InputInstances)
-			if err != nil {
-				return nil, status.Errorf(codes.InvalidArgument, "error running getInstances for host set id %q: %s", query.Id, err)
-			}
+		output, err := getInstances(ctx, instancesClient, query.InputInstances)
+		if err != nil {
+			return nil, status.Errorf(codes.InvalidArgument, "error running list instances for host set id %q: %s", query.Id, err)
 		}
 
 		queries[i].Output = output
@@ -547,8 +592,6 @@ func validateSet(s *hostsets.HostSet) error {
 
 	if instanceGroupSet && filterSet {
 		badFields["attributes"] = "must set instance group or filter, cannot set both"
-	} else if instanceGroupSet && len(attrs.InstanceGroup) == 0 {
-		badFields[fmt.Sprintf("attributes.%s", ConstInstanceGroup)] = "must not be empty"
 	} else if filterSet && len(attrs.Filters) == 0 {
 		badFields[fmt.Sprintf("attributes.%s", ConstListInstancesFilter)] = "must not be empty"
 	}

@@ -17,10 +17,6 @@ import (
 	"google.golang.org/protobuf/types/known/structpb"
 )
 
-type Iterator interface {
-	Next() (*computepb.Instance, error)
-}
-
 type InstancesAPI interface {
 	List(ctx context.Context, req *computepb.ListInstancesRequest, opts ...gax.CallOption) *compute.InstanceIterator
 }
