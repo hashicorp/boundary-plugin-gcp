@@ -54,8 +54,6 @@ permissions are required to rotate the service account key:
 [
     "iam.serviceAccountKeys.create",
     "iam.serviceAccountKeys.delete",
-    "iam.serviceAccountKeys.disable",
-    "iam.serviceAccountKeys.enable",
 ]
 ```
 
