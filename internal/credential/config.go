@@ -31,9 +31,17 @@ var findDefaultCredentialsFn = func(ctx context.Context, scopes ...string) (*goo
 	return google.FindDefaultCredentials(ctx, scopes...)
 }
 
-// serviceAccountTokenLifetime is the lifetime of the generated GCP authentication token.
-// The token is valid for 1 hour.
-const serviceAccountTokenLifetime = time.Hour
+const (
+	// serviceAccountTokenLifetime is the lifetime of the generated GCP authentication token.
+	// The token is valid for 1 hour.
+	serviceAccountTokenLifetime = time.Hour
+	// defaultGCPScope is the default scope for GCP.
+	// GCP requires the cloud-platform scope to access all GCP services.
+	// GCP recommends setting the scope to https://www.googleapis.com/auth/cloud-platform
+	// and then controlling the service account's access by granting it IAM roles.
+	// https://cloud.google.com/compute/docs/access/service-accounts#scopes_best_practice
+	defaultGCPScope = "https://www.googleapis.com/auth/cloud-platform"
+)
 
 // Config is the configuration for the GCP credential.
 type Config struct {
@@ -63,6 +71,10 @@ func NewConfig(opt ...Option) (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
+	scopes := opts.WithScopes
+	if len(scopes) == 0 {
+		scopes = []string{defaultGCPScope}
+	}
 	c := &Config{
 		ProjectId:              opts.WithProjectId,
 		PrivateKey:             opts.WithPrivateKey,
@@ -70,7 +82,7 @@ func NewConfig(opt ...Option) (*Config, error) {
 		ClientEmail:            opts.WithClientEmail,
 		TargetServiceAccountId: opts.WithTargetServiceAccountId,
 		Zone:                   opts.WithZone,
-		Scopes:                 opts.WithScopes,
+		Scopes:                 scopes,
 	}
 	return c, nil
 }

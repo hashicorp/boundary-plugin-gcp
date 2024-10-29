@@ -414,9 +414,11 @@ func TestNewConfig(t *testing.T) {
 			expectError: false,
 		},
 		{
-			name:        "No Options",
-			options:     []Option{},
-			expected:    &Config{},
+			name:    "No Options",
+			options: []Option{},
+			expected: &Config{
+				Scopes: []string{defaultGCPScope},
+			},
 			expectError: false,
 		},
 		{
@@ -428,6 +430,27 @@ func TestNewConfig(t *testing.T) {
 			},
 			expected:    nil,
 			expectError: true,
+		},
+		{
+			name: "no scope set",
+			options: []Option{
+				WithProjectId("test-project-id"),
+				WithPrivateKey("test-private-key"),
+				WithPrivateKeyId("test-private-key-id"),
+				WithClientEmail("test-email@example.com"),
+				WithTargetServiceAccountId("target-service-account@example.com"),
+				WithZone("test-zone"),
+			},
+			expected: &Config{
+				ProjectId:              "test-project-id",
+				PrivateKey:             "test-private-key",
+				PrivateKeyId:           "test-private-key-id",
+				ClientEmail:            "test-email@example.com",
+				TargetServiceAccountId: "target-service-account@example.com",
+				Zone:                   "test-zone",
+				Scopes:                 []string{defaultGCPScope},
+			},
+			expectError: false,
 		},
 	}
 
