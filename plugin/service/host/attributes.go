@@ -70,12 +70,6 @@ func getSetAttributes(in *structpb.Struct) (*SetAttributes, error) {
 	badFields := make(map[string]string)
 	unknownFields := values.StructFields(in)
 
-	if _, filter := unknownFields[ConstListInstancesFilter]; filter {
-		if _, ig := unknownFields[ConstInstanceGroup]; ig {
-			return nil, errors.InvalidArgumentError("Error in the attributes provided, cannot define both filter and instance group", nil)
-		}
-	}
-
 	delete(unknownFields, ConstListInstancesFilter)
 
 	for a := range unknownFields {

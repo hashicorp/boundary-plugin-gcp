@@ -452,7 +452,7 @@ func (p *HostPlugin) OnDeleteSet(ctx context.Context, req *pb.OnDeleteSetRequest
 	return &pb.OnDeleteSetResponse{}, nil
 }
 
-// ListHosts returns the list of instances based on filter or instance group name.
+// ListHosts returns the list of instances based on instance filter.
 func (p *HostPlugin) ListHosts(ctx context.Context, req *pb.ListHostsRequest) (*pb.ListHostsResponse, error) {
 	catalog := req.GetCatalog()
 	if catalog == nil {
@@ -588,11 +588,8 @@ func validateSet(s *hostsets.HostSet) error {
 
 	badFields := make(map[string]string)
 	_, filterSet := attrMap[ConstListInstancesFilter]
-	_, instanceGroupSet := attrMap[ConstInstanceGroup]
 
-	if instanceGroupSet && filterSet {
-		badFields["attributes"] = "must set instance group or filter, cannot set both"
-	} else if filterSet && len(attrs.Filters) == 0 {
+	if filterSet && len(attrs.Filters) == 0 {
 		badFields[fmt.Sprintf("attributes.%s", ConstListInstancesFilter)] = "must not be empty"
 	}
 
