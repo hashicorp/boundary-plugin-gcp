@@ -103,14 +103,6 @@ func TestGetSetAttributes(t *testing.T) {
 			},
 			expectedErrContains: "attributes.bar: unrecognized field, attributes.foo: unrecognized field",
 		},
-		{
-			name: "invalid, cannot have both instance filter and group defined",
-			in: map[string]any{
-				ConstListInstancesFilter: "test",
-				ConstInstanceGroup:       "test",
-			},
-			expectedErrContains: "Error in the attributes provided, cannot define both filter and instance group",
-		},
 	}
 
 	for _, tc := range cases {
