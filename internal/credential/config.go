@@ -71,10 +71,6 @@ func NewConfig(opt ...Option) (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
-	scopes := opts.WithScopes
-	if len(scopes) == 0 {
-		scopes = []string{defaultGCPScope}
-	}
 	c := &Config{
 		ProjectId:              opts.WithProjectId,
 		PrivateKey:             opts.WithPrivateKey,
@@ -82,7 +78,7 @@ func NewConfig(opt ...Option) (*Config, error) {
 		ClientEmail:            opts.WithClientEmail,
 		TargetServiceAccountId: opts.WithTargetServiceAccountId,
 		Zone:                   opts.WithZone,
-		Scopes:                 scopes,
+		Scopes:                 opts.WithScopes,
 	}
 	return c, nil
 }

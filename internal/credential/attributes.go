@@ -130,13 +130,36 @@ func GetCredentialsConfig(secrets *structpb.Struct, attrs *CredentialAttributes)
 		return nil, errors.InvalidArgumentError("Error in the secrets provided", badFields)
 	}
 
-	return &Config{
-		ProjectId:              attrs.ProjectId,
-		ClientEmail:            attrs.ClientEmail,
-		Zone:                   attrs.Zone,
-		PrivateKey:             privateKey,
-		PrivateKeyId:           privateKeyId,
-		TargetServiceAccountId: attrs.TargetServiceAccountId,
-		Scopes:                 []string{defaultGCPScope},
-	}, nil
+	cfgOpts := []Option{}
+	if privateKeyId != "" && privateKey != "" {
+		cfgOpts = append(cfgOpts,
+			WithPrivateKey(privateKey),
+			WithPrivateKeyId(privateKeyId))
+	}
+
+	if attrs.ProjectId != "" {
+		cfgOpts = append(cfgOpts, WithProjectId(attrs.ProjectId))
+	}
+	if attrs.ClientEmail != "" {
+		cfgOpts = append(cfgOpts, WithClientEmail(attrs.ClientEmail))
+	}
+	if attrs.Zone != "" {
+		cfgOpts = append(cfgOpts, WithZone(attrs.Zone))
+	}
+	if privateKey != "" {
+		cfgOpts = append(cfgOpts, WithPrivateKey(privateKey))
+	}
+	if privateKeyId != "" {
+		cfgOpts = append(cfgOpts, WithPrivateKeyId(privateKeyId))
+	}
+	if attrs.TargetServiceAccountId != "" {
+		cfgOpts = append(cfgOpts, WithTargetServiceAccountId(attrs.TargetServiceAccountId))
+	}
+
+	credentialsConfig, err := NewConfig(cfgOpts...)
+	if err != nil {
+		return nil, fmt.Errorf("error creating credentials config: %w", err)
+	}
+
+	return credentialsConfig, nil
 }

@@ -111,7 +111,7 @@ func Test_getOpts(t *testing.T) {
 	t.Run("WithScopes", func(t *testing.T) {
 		opts, err := getOpts()
 		require.NoError(t, err)
-		require.Nil(t, opts.WithScopes)
+		require.Equal(t, []string{defaultGCPScope}, opts.WithScopes)
 
 		scopes := []string{"test"}
 		opts, err = getOpts(WithScopes(scopes))
