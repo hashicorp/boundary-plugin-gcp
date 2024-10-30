@@ -137,5 +137,6 @@ func GetCredentialsConfig(secrets *structpb.Struct, attrs *CredentialAttributes)
 		PrivateKey:             privateKey,
 		PrivateKeyId:           privateKeyId,
 		TargetServiceAccountId: attrs.TargetServiceAccountId,
+		Scopes:                 []string{defaultGCPScope},
 	}, nil
 }
