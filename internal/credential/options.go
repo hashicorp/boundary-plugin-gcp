@@ -37,6 +37,7 @@ type Option func(*Options) error
 func getDefaultOptions() *Options {
 	return &Options{
 		WithCredentialsConfig: &Config{},
+		WithScopes:            []string{defaultGCPScope},
 	}
 }
 

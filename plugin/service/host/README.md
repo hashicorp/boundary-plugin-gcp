@@ -26,7 +26,7 @@ boundary host-sets create plugin \
  -host-catalog-id HOST_CATALOG_ID \
  -name "Example Plugin-Based Host Set" \
  -description "Description for plugin-based host set" \
- -attr filters=status=RUNNING
+ -attr filters=status=RUNNING \
  -attr filters=labels.env:prod
 ```
 

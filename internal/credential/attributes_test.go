@@ -119,13 +119,16 @@ func TestGetCredentialsConfig(t *testing.T) {
 				Zone: "us-central-1a",
 			},
 			expected: &Config{
-				Zone: "us-central-1a",
+				Zone:   "us-central-1a",
+				Scopes: []string{defaultGCPScope},
 			},
 		},
 		{
-			name:     "nil attributes",
-			attrs:    nil,
-			expected: &Config{},
+			name:  "nil attributes",
+			attrs: nil,
+			expected: &Config{
+				Scopes: []string{defaultGCPScope},
+			},
 		},
 		{
 			name: "unknown fields in secrets",
@@ -156,6 +159,7 @@ func TestGetCredentialsConfig(t *testing.T) {
 				ClientEmail:  "test@test.com",
 				PrivateKey:   "test-private-key",
 				PrivateKeyId: "test-private-key-id",
+				Scopes:       []string{defaultGCPScope},
 			},
 		},
 		{
@@ -221,6 +225,7 @@ func TestGetCredentialsConfig(t *testing.T) {
 				PrivateKey:   "test-private-key",
 				PrivateKeyId: "test-private-key-id",
 				ClientEmail:  "test@test.com",
+				Scopes:       []string{defaultGCPScope},
 			},
 		},
 		{
@@ -242,6 +247,7 @@ func TestGetCredentialsConfig(t *testing.T) {
 				PrivateKeyId:           "test-private-key-id",
 				ClientEmail:            "test@test.com",
 				TargetServiceAccountId: "test-target-service-account",
+				Scopes:                 []string{defaultGCPScope},
 			},
 		},
 	}
