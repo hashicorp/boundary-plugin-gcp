@@ -1,3 +1,6 @@
+// Copyright (c) HashiCorp, Inc.
+// SPDX-License-Identifier: MPL-2.0
+
 package host
 
 // Package host provides a plugin for Boundary that retrieves host information from (GCP) Google Cloud Platform.
