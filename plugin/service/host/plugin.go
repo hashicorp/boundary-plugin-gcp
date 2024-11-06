@@ -624,7 +624,7 @@ func dryRunValidation(
 
 	var filters string
 	if len(listFilters) > 0 {
-		filters = strings.Join(listFilters, " ")
+		filters = strings.Join(listFilters, " AND ")
 	}
 
 	it := instancesClient.List(ctx, &computepb.ListInstancesRequest{
@@ -649,10 +649,10 @@ func buildFilters(attrs *SetAttributes) ([]string, error) {
 	// If filters are provided, validate them
 	if len(attrs.Filters) != 0 {
 		for _, filterAttr := range attrs.Filters {
-			key, operator, value, valid := extractFilterValue(filterAttr)
+			key, _, value, valid := extractFilterValue(filterAttr)
 			switch {
 			case !valid:
-				return nil, fmt.Errorf("filter %q contains invalid operator: %s. Use one of =, !=, >, <, <=, >=, :, eq, ne", filterAttr, operator)
+				return nil, fmt.Errorf("invalid filter %q. Ensure the operator is one of =, !=, >, <, <=, >=, :, eq, ne", filterAttr)
 			case len(strings.TrimSpace(key)) == 0:
 				return nil, fmt.Errorf("filter %q contains an empty filter key", filterAttr)
 			case len(strings.TrimSpace(value)) == 0:

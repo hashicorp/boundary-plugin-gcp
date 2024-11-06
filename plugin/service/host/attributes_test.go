@@ -6,6 +6,7 @@ package host
 import (
 	"testing"
 
+	computepb "cloud.google.com/go/compute/apiv1/computepb"
 	cred "github.com/hashicorp/boundary-plugin-gcp/internal/credential"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
@@ -125,4 +126,83 @@ func TestGetSetAttributes(t *testing.T) {
 			require.Equal(tc.expected, actual)
 		})
 	}
+}
+
+func TestBuildListInstancesRequest(t *testing.T) {
+	cases := []struct {
+		name                string
+		attributes          *SetAttributes
+		catalog             *CatalogAttributes
+		expected            *computepb.ListInstancesRequest
+		expectedErrContains string
+	}{
+		{
+			name: "valid request with single filter",
+			attributes: &SetAttributes{
+				Filters: []string{"tags.items=my-tag"},
+			},
+			catalog: &CatalogAttributes{
+				CredentialAttributes: &cred.CredentialAttributes{
+					ProjectId: "test-12345",
+					Zone:      "us-central-1a",
+				},
+			},
+			expected: &computepb.ListInstancesRequest{
+				Project: "test-12345",
+				Zone:    "us-central-1a",
+				Filter:  stringPtr("tags.items=my-tag AND status = running"),
+			},
+		},
+		{
+			name: "valid request with multiple filters",
+			attributes: &SetAttributes{
+				Filters: []string{"tags.items=my-tag", "tags.items=my-other-tag"},
+			},
+			catalog: &CatalogAttributes{
+				CredentialAttributes: &cred.CredentialAttributes{
+					ProjectId: "test-12345",
+					Zone:      "us-central-1a",
+				},
+			},
+			expected: &computepb.ListInstancesRequest{
+				Project: "test-12345",
+				Zone:    "us-central-1a",
+				Filter:  stringPtr("tags.items=my-tag AND tags.items=my-other-tag AND status = running"),
+			},
+		},
+		{
+			name: "error building filters",
+			attributes: &SetAttributes{
+				Filters: []string{"invalid-filter"},
+			},
+			catalog: &CatalogAttributes{
+				CredentialAttributes: &cred.CredentialAttributes{
+					ProjectId: "test-12345",
+					Zone:      "us-central-1a",
+				},
+			},
+			expectedErrContains: "error building filters",
+		},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			require := require.New(t)
+
+			actual, err := buildListInstancesRequest(tc.attributes, tc.catalog)
+			if tc.expectedErrContains != "" {
+				require.Error(err)
+				require.Contains(err.Error(), tc.expectedErrContains)
+				return
+			}
+
+			require.NoError(err)
+			require.Equal(tc.expected, actual)
+		})
+	}
+}
+
+func stringPtr(s string) *string {
+	return &s
 }
