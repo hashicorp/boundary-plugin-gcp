@@ -663,7 +663,7 @@ func TestListHosts(t *testing.T) {
 					},
 				},
 			},
-			expectedErr:     "error building filters: filter \"not-a-filter\" contains invalid operator",
+			expectedErr:     "error building filters: invalid filter \"not-a-filter\"",
 			expectedErrCode: codes.InvalidArgument,
 		},
 	}
@@ -2188,6 +2188,231 @@ func TestNormalizeSetData(t *testing.T) {
 			}
 			require.NoError(err)
 			require.Empty(cmp.Diff(tc.expectedRsp, actual, protocmp.Transform()))
+		})
+	}
+}
+
+func TestBuildFilters(t *testing.T) {
+	cases := []struct {
+		name        string
+		attrs       *SetAttributes
+		expected    []string
+		expectedErr string
+	}{
+		{
+			name: "no filters provided",
+			attrs: &SetAttributes{
+				Filters: []string{},
+			},
+			expected: []string{defaultStatusFilter},
+		},
+		{
+			name: "valid filters provided",
+			attrs: &SetAttributes{
+				Filters: []string{"name = instance-1", "zone = us-central1-a"},
+			},
+			expected: []string{"name = instance-1", "zone = us-central1-a", defaultStatusFilter},
+		},
+		{
+			name: "filter with invalid operator",
+			attrs: &SetAttributes{
+				Filters: []string{"name ~ instance-1"},
+			},
+			expectedErr: "invalid filter \"name ~ instance-1\"",
+		},
+		{
+			name: "filter with empty key",
+			attrs: &SetAttributes{
+				Filters: []string{" = instance-1"},
+			},
+			expectedErr: "invalid filter \" = instance-1\"",
+		},
+		{
+			name: "filter with empty value",
+			attrs: &SetAttributes{
+				Filters: []string{"name = "},
+			},
+			expectedErr: "filter \"name = \" contains an empty value",
+		},
+		{
+			name: "filter with status key",
+			attrs: &SetAttributes{
+				Filters: []string{"status = terminated"},
+			},
+			expected: []string{"status = terminated"},
+		},
+		{
+			name: "filter with multiple filters",
+			attrs: &SetAttributes{
+				Filters: []string{"status = terminated", "name = instance-1"},
+			},
+			expected: []string{"status = terminated", "name = instance-1"},
+		},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			require := require.New(t)
+
+			actual, err := buildFilters(tc.attrs)
+			if tc.expectedErr != "" {
+				require.Contains(err.Error(), tc.expectedErr)
+				return
+			}
+			require.NoError(err)
+			require.Equal(tc.expected, actual)
+		})
+	}
+}
+
+func TestDryRunValidation(t *testing.T) {
+	ctx := context.Background()
+
+	cases := []struct {
+		name            string
+		state           *gcpCatalogPersistedState
+		listFilters     []string
+		clientOptions   []option.ClientOption
+		expectedErr     string
+		expectedErrCode codes.Code
+	}{
+		{
+			name:            "nil state",
+			state:           nil,
+			expectedErr:     "persisted state is required",
+			expectedErrCode: codes.InvalidArgument,
+		},
+		{
+			name: "error getting instances client",
+			state: &gcpCatalogPersistedState{
+				PersistedState: &cred.PersistedState{
+					CredentialsConfig: &cred.Config{
+						ProjectId: "test-project",
+						Zone:      "us-central1-a",
+					},
+				},
+				testInstancesAPIFunc: newTestMockInstances(ctx,
+					nil,
+					testMockInstancesWithListInstancesOutput(nil),
+					testMockInstancesWithListInstancesError(fmt.Errorf("failed to list instances")),
+				),
+			},
+			clientOptions: []option.ClientOption{
+				option.WithHTTPClient(&http.Client{}),
+			},
+			expectedErr:     "gcp list instances failed",
+			expectedErrCode: codes.FailedPrecondition,
+		},
+		{
+			name: "list instances error",
+			state: &gcpCatalogPersistedState{
+				PersistedState: &cred.PersistedState{
+					CredentialsConfig: &cred.Config{
+						ProjectId: "test-project",
+						Zone:      "us-central1-a",
+					},
+				},
+				testInstancesAPIFunc: newTestMockInstances(ctx,
+					nil,
+					testMockInstancesWithListInstancesOutput(nil),
+					testMockInstancesWithListInstancesError(fmt.Errorf("failed to list instances")),
+				),
+			},
+			expectedErr:     "gcp list instances failed",
+			expectedErrCode: codes.FailedPrecondition,
+		},
+		{
+			name: "success with filters",
+			state: &gcpCatalogPersistedState{
+				PersistedState: &cred.PersistedState{
+					CredentialsConfig: &cred.Config{
+						ProjectId: "test-project",
+						Zone:      "us-central1-a",
+					},
+				},
+				testInstancesAPIFunc: newTestMockInstances(ctx,
+					nil,
+					testMockInstancesWithListInstancesOutput(&computepb.InstanceList{
+						Items: []*computepb.Instance{
+							{
+								Name: pointer("boundary-1"),
+								Id:   pointer(uint64(1)),
+								NetworkInterfaces: []*computepb.NetworkInterface{
+									{
+										AccessConfigs: []*computepb.AccessConfig{
+											{
+												NatIP:        pointer("102.1.1.1"),
+												ExternalIpv6: pointer("2001:db8::1"),
+											},
+										},
+										Ipv6AccessConfigs: []*computepb.AccessConfig{
+											{
+												ExternalIpv6: pointer("2001:db8::1"),
+											},
+										},
+									},
+								},
+							},
+						},
+					}),
+					testMockInstancesWithListInstancesError(nil),
+				),
+			},
+			listFilters: []string{"name = instance-1", "zone = us-central1-a"},
+		},
+		{
+			name: "success without filters",
+			state: &gcpCatalogPersistedState{
+				PersistedState: &cred.PersistedState{
+					CredentialsConfig: &cred.Config{
+						ProjectId: "test-project",
+						Zone:      "us-central1-a",
+					},
+				},
+				testInstancesAPIFunc: newTestMockInstances(ctx,
+					nil,
+					testMockInstancesWithListInstancesOutput(&computepb.InstanceList{
+						Items: []*computepb.Instance{
+							{
+								Name: pointer("boundary-1"),
+								Id:   pointer(uint64(1)),
+								NetworkInterfaces: []*computepb.NetworkInterface{
+									{
+										AccessConfigs: []*computepb.AccessConfig{
+											{
+												NatIP:        pointer("102.1.1.1"),
+												ExternalIpv6: pointer("2001:db8::1"),
+											},
+										},
+										Ipv6AccessConfigs: []*computepb.AccessConfig{
+											{
+												ExternalIpv6: pointer("2001:db8::1"),
+											},
+										},
+									},
+								},
+							},
+						},
+					}),
+					testMockInstancesWithListInstancesError(nil),
+				),
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			require := require.New(t)
+
+			st := dryRunValidation(ctx, tc.state, tc.listFilters, tc.clientOptions...)
+			if tc.expectedErr != "" {
+				require.Contains(st.Err().Error(), tc.expectedErr)
+				require.Equal(st.Code(), tc.expectedErrCode)
+				return
+			}
+			require.NoError(st.Err())
 		})
 	}
 }
