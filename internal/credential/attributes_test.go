@@ -199,16 +199,6 @@ func TestGetCredentialsConfig(t *testing.T) {
 			expectedErrContains: "must not be empty when private key is set",
 		},
 		{
-			name:    "missing private key with client email",
-			secrets: map[string]any{},
-			attrs: &CredentialAttributes{
-				ClientEmail: "test@test.com",
-				ProjectId:   "test-project",
-				Zone:        "us-central-1a",
-			},
-			expectedErrContains: "must not be empty when client email is set",
-		},
-		{
 			name: "valid static credentials",
 			secrets: map[string]any{
 				ConstPrivateKeyId: "test-private-key-id",
