@@ -122,8 +122,6 @@ func GetCredentialsConfig(secrets *structpb.Struct, attrs *CredentialAttributes)
 	// static credentials requires the private key and client email
 	case privateKey != "" && attrs.ClientEmail == "":
 		badFields[fmt.Sprintf("attributes.%s", ConstClientEmail)] = "must not be empty when private key is set"
-	case attrs.ClientEmail != "" && privateKey == "":
-		badFields[fmt.Sprintf("secrets.%s", ConstPrivateKey)] = "must not be empty when client email is set"
 	}
 
 	if len(badFields) > 0 {

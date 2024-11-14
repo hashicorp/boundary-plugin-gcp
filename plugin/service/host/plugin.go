@@ -88,7 +88,7 @@ func (p *HostPlugin) OnCreateCatalog(ctx context.Context, req *pb.OnCreateCatalo
 	}
 
 	if credState.CredentialsConfig.IsRotatable() && !catalogAttributes.DisableCredentialRotation {
-		if err := credState.CredentialsConfig.RotateServiceAccountKey(ctx, permissions, p.testGCPClientOpts...); err != nil {
+		if err := credState.RotateCreds(ctx, permissions, p.testGCPClientOpts...); err != nil {
 			return nil, err
 		}
 	}
@@ -187,7 +187,11 @@ func (p *HostPlugin) OnUpdateCatalog(ctx context.Context, req *pb.OnUpdateCatalo
 	}
 
 	if credState.CredentialsConfig.IsRotatable() {
-		if !updatedCredentials.IsRotatable() && !newCatalogAttributes.DisableCredentialRotation {
+		// This is a validate check to make sure that we aren't trying to
+		// rotate credentials that are not rotatable. For example,
+		// Application Default Credentials (ADC) are not rotatable.
+		// Client Email is expected to be empty for ADC.
+		if updatedCredentials.ClientEmail == "" && !updatedCredentials.IsRotatable() && !newCatalogAttributes.DisableCredentialRotation {
 			return nil, status.Error(codes.InvalidArgument, "cannot rotate credentials for non-rotatable credentials")
 		}
 
@@ -209,7 +213,7 @@ func (p *HostPlugin) OnUpdateCatalog(ctx context.Context, req *pb.OnUpdateCatalo
 		// If we're enabling rotation now but didn't before, or have
 		// freshly replaced credentials, we can rotate here.
 		if !newCatalogAttributes.DisableCredentialRotation && credState.CredsLastRotatedTime.IsZero() {
-			if err := credState.CredentialsConfig.RotateServiceAccountKey(ctx, permissions, p.testGCPClientOpts...); err != nil {
+			if err := credState.RotateCreds(ctx, permissions, p.testGCPClientOpts...); err != nil {
 				return nil, err
 			}
 		}
