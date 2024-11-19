@@ -30,7 +30,7 @@ func NewTestIAMAdminServer(createServiceAccountKeyError error, deleteServiceAcco
 }
 
 func (f *testIAMAdminServer) CreateServiceAccountKey(ctx context.Context, req *adminpb.CreateServiceAccountKeyRequest) (*adminpb.ServiceAccountKey, error) {
-	serviceAccountKey := ServiceAccountKey{
+	serviceAccountKey := ServiceAccountPrivateKey{
 		PrivateKey:   "updated-private-key",
 		PrivateKeyID: "updated-private-key-id",
 	}

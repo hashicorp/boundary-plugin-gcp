@@ -24,7 +24,10 @@ const (
 	IAMServiceAccountKeysDeletePermission = "iam.serviceAccountKeys.delete"
 )
 
-type ServiceAccountKey struct {
+// ServiceAccountPrivateKey represents a decoded PrivateKeyData
+// from a Service Account Key.
+// https://cloud.google.com/iam/docs/reference/rest/v1/projects.serviceAccounts.keys#ServiceAccountKey
+type ServiceAccountPrivateKey struct {
 	Type                    string `json:"type"`
 	ProjectID               string `json:"project_id"`
 	PrivateKeyID            string `json:"private_key_id"`
@@ -80,7 +83,7 @@ func (c *Config) RotateServiceAccountKey(ctx context.Context, permissions []stri
 		return status.Errorf(codes.Internal, "error creating service account key: %v", err)
 	}
 
-	var serviceAccountKey ServiceAccountKey
+	var serviceAccountKey ServiceAccountPrivateKey
 	err = json.Unmarshal(createServiceAccountKeyRes.PrivateKeyData, &serviceAccountKey)
 	if err != nil {
 		return status.Errorf(codes.Internal, "error unmarshalling service account key: %v", err)
