@@ -152,12 +152,15 @@ func (p *HostPlugin) OnUpdateCatalog(ctx context.Context, req *pb.OnUpdateCatalo
 		return nil, status.Errorf(codes.InvalidArgument, "error getting persisted state from proto: %s", err)
 	}
 
-	updatedCredentials, err := credential.GetCredentialsConfig(newCatalog.GetSecrets(), newCatalogAttributes.CredentialAttributes)
-	if err != nil {
-		return nil, err
-	}
+	// We will be updating credentials when one of two changes occur:
+	// 1. The new catalog has a service account key, in which case we need to delete the old service account key credentials
+	// 2. The target service account ID has changed. This indicates a change of credential type to use service account impersonation
+	if newCatalog.GetSecrets() != nil || newCatalogAttributes.TargetServiceAccountId != oldCatalogAttributes.TargetServiceAccountId {
+		updatedCredentials, err := credential.GetCredentialsConfig(newCatalog.GetSecrets(), newCatalogAttributes.CredentialAttributes)
+		if err != nil {
+			return nil, err
+		}
 
-	if newCatalog.GetSecrets() != nil {
 		newCredState, err := credential.NewPersistedState([]credential.Option{
 			credential.WithCredentialsConfig(updatedCredentials),
 		}...,
@@ -186,15 +189,14 @@ func (p *HostPlugin) OnUpdateCatalog(ctx context.Context, req *pb.OnUpdateCatalo
 		}
 	}
 
-	if credState.CredentialsConfig.IsRotatable() {
-		// This is a validate check to make sure that we aren't trying to
-		// rotate credentials that are not rotatable. For example,
-		// Application Default Credentials (ADC) are not rotatable.
-		// Client Email is expected to be empty for ADC.
-		if updatedCredentials.ClientEmail == "" && !updatedCredentials.IsRotatable() && !newCatalogAttributes.DisableCredentialRotation {
-			return nil, status.Error(codes.InvalidArgument, "cannot rotate credentials for non-rotatable credentials")
-		}
+	// This is a validate check to make sure that we aren't trying to
+	// rotate credentials that are not rotatable. For example,
+	// Application Default Credentials (ADC) are not rotatable.
+	if !credState.CredentialsConfig.IsRotatable() && !newCatalogAttributes.DisableCredentialRotation {
+		return nil, status.Error(codes.InvalidArgument, "cannot rotate credentials for non-rotatable credentials")
+	}
 
+	if credState.CredentialsConfig.IsRotatable() {
 		// This is a validate check to make sure that we aren't disabling
 		// rotation for credentials currently being managed by rotation.
 		// This is not allowed.

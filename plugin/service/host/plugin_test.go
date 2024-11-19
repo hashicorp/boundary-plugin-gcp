@@ -1172,6 +1172,12 @@ func TestUpdateCatalog(t *testing.T) {
 							},
 						},
 					},
+					Secrets: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							cred.ConstPrivateKeyId: structpb.NewStringValue(""),
+							cred.ConstPrivateKey:   structpb.NewStringValue(""),
+						},
+					},
 				},
 				Persisted: &pb.HostCatalogPersisted{
 					Secrets: &structpb.Struct{
@@ -1183,7 +1189,42 @@ func TestUpdateCatalog(t *testing.T) {
 					},
 				},
 			},
+			catalogOpts: []gcpCatalogPersistedStateOption{
+				withTestInstancesAPIFunc(newTestMockInstances(ctx,
+					nil,
+					testMockInstancesWithListInstancesOutput(&computepb.InstanceList{}),
+					testMockInstancesWithListInstancesError(nil),
+				)),
+			},
 			expectedErr: "cannot rotate credentials for non-rotatable credentials",
+		},
+		{
+			name: "update target_service_account_id",
+			req: &pb.OnUpdateCatalogRequest{
+				CurrentCatalog: &hostcatalogs.HostCatalog{
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								cred.ConstProjectId:                 structpb.NewStringValue("test-project"),
+								cred.ConstClientEmail:               structpb.NewStringValue("test@example.com"),
+								cred.ConstZone:                      structpb.NewStringValue("us-central1-a"),
+								cred.ConstDisableCredentialRotation: structpb.NewBoolValue(true),
+							},
+						},
+					},
+				},
+				NewCatalog: &hostcatalogs.HostCatalog{
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								cred.ConstProjectId:                 structpb.NewStringValue("test-project-1"),
+								cred.ConstZone:                      structpb.NewStringValue("us-central1"),
+								cred.ConstDisableCredentialRotation: structpb.NewBoolValue(true),
+							},
+						},
+					},
+				},
+			},
 		},
 	}
 
