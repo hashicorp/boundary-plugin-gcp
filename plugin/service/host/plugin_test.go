@@ -1199,7 +1199,7 @@ func TestUpdateCatalog(t *testing.T) {
 			expectedErr: "cannot rotate credentials for non-rotatable credentials",
 		},
 		{
-			name: "update target_service_account_id",
+			name: "update application default credentials",
 			req: &pb.OnUpdateCatalogRequest{
 				CurrentCatalog: &hostcatalogs.HostCatalog{
 					Attrs: &hostcatalogs.HostCatalog_Attributes{
@@ -1223,6 +1223,18 @@ func TestUpdateCatalog(t *testing.T) {
 							},
 						},
 					},
+				},
+			},
+			catalogOpts: []gcpCatalogPersistedStateOption{
+				withTestInstancesAPIFunc(newTestMockInstances(ctx,
+					nil,
+					testMockInstancesWithListInstancesOutput(&computepb.InstanceList{}),
+					testMockInstancesWithListInstancesError(nil),
+				)),
+			},
+			expectedRsp: &pb.OnUpdateCatalogResponse{
+				Persisted: &pb.HostCatalogPersisted{
+					Secrets: &structpb.Struct{},
 				},
 			},
 		},
