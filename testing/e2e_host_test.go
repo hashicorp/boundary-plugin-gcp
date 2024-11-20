@@ -37,7 +37,7 @@ const (
 // environment variables set:
 // GOOGLE_APPLICATION_CREDENTIALS: This should be
 // the path to the service account key. This can also
-// be automatically after authenticating with gcloud
+// be automatically set after authenticating with gcloud
 // using `gcloud auth application-default login`.
 //
 // TF_VAR_project_id: The project_id of the project.
