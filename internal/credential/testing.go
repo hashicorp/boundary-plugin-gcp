@@ -5,6 +5,7 @@ package credential
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net"
 
@@ -29,9 +30,17 @@ func NewTestIAMAdminServer(createServiceAccountKeyError error, deleteServiceAcco
 }
 
 func (f *testIAMAdminServer) CreateServiceAccountKey(ctx context.Context, req *adminpb.CreateServiceAccountKeyRequest) (*adminpb.ServiceAccountKey, error) {
+	serviceAccountKey := ServiceAccountPrivateKey{
+		PrivateKey:   "updated-private-key",
+		PrivateKeyID: "updated-private-key-id",
+	}
+	serviceAccountKeyData, err := json.Marshal(serviceAccountKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal service account key: %v", err)
+	}
 	resp := &adminpb.ServiceAccountKey{
 		Name:           "projects/-/serviceAccounts/1234/keys/updated-private-key-id",
-		PrivateKeyData: []byte("updated-private-key"),
+		PrivateKeyData: serviceAccountKeyData,
 	}
 	return resp, f.testCreateServiceAccountKeyError
 }

@@ -5,9 +5,9 @@ package credential
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"slices"
-	"strings"
 
 	admin "cloud.google.com/go/iam/admin/apiv1"
 	"cloud.google.com/go/iam/admin/apiv1/adminpb"
@@ -22,8 +22,23 @@ const (
 	ComputeInstancesListPermission        = "compute.instances.list"
 	IAMServiceAccountKeysCreatePermission = "iam.serviceAccountKeys.create"
 	IAMServiceAccountKeysDeletePermission = "iam.serviceAccountKeys.delete"
-	CreateServiceAccountKeyResourceName   = "projects/-/serviceAccounts"
 )
+
+// ServiceAccountPrivateKey represents a decoded PrivateKeyData
+// from a Service Account Key.
+// https://cloud.google.com/iam/docs/reference/rest/v1/projects.serviceAccounts.keys#ServiceAccountKey
+type ServiceAccountPrivateKey struct {
+	Type                    string `json:"type"`
+	ProjectID               string `json:"project_id"`
+	PrivateKeyID            string `json:"private_key_id"`
+	PrivateKey              string `json:"private_key"`
+	ClientEmail             string `json:"client_email"`
+	ClientID                string `json:"client_id"`
+	AuthURI                 string `json:"auth_uri"`
+	TokenURI                string `json:"token_uri"`
+	AuthProviderX509CertURL string `json:"auth_provider_x509_cert_url"`
+	ClientX509CertURL       string `json:"client_x509_cert_url"`
+}
 
 // RotateServiceAccountKey takes the private key from this credentials config
 // and first creates a new private key and private key id, then deletes the
@@ -60,7 +75,7 @@ func (c *Config) RotateServiceAccountKey(ctx context.Context, permissions []stri
 	}
 
 	createServiceAccountKeyRes, err := iamClient.CreateServiceAccountKey(ctx, &adminpb.CreateServiceAccountKeyRequest{
-		Name:           fmt.Sprintf("%s/%s", CreateServiceAccountKeyResourceName, c.ClientEmail),
+		Name:           fmt.Sprintf("projects/%s/serviceAccounts/%s", c.ProjectId, c.ClientEmail),
 		PrivateKeyType: adminpb.ServiceAccountPrivateKeyType_TYPE_GOOGLE_CREDENTIALS_FILE,
 		KeyAlgorithm:   adminpb.ServiceAccountKeyAlgorithm_KEY_ALG_RSA_2048,
 	})
@@ -68,15 +83,16 @@ func (c *Config) RotateServiceAccountKey(ctx context.Context, permissions []stri
 		return status.Errorf(codes.Internal, "error creating service account key: %v", err)
 	}
 
-	privateKeyId, err := getPrivateKeyIdFromName(createServiceAccountKeyRes.Name)
+	var serviceAccountKey ServiceAccountPrivateKey
+	err = json.Unmarshal(createServiceAccountKeyRes.PrivateKeyData, &serviceAccountKey)
 	if err != nil {
-		return status.Errorf(codes.Internal, "error parsing private key ID: %v", err)
+		return status.Errorf(codes.Internal, "error unmarshalling service account key: %v", err)
 	}
 
 	// Clone the config, update the private key and private key ID with the new key.
 	newConfig := c.clone()
-	newConfig.PrivateKey = string(createServiceAccountKeyRes.PrivateKeyData)
-	newConfig.PrivateKeyId = privateKeyId
+	newConfig.PrivateKey = serviceAccountKey.PrivateKey
+	newConfig.PrivateKeyId = serviceAccountKey.PrivateKeyID
 
 	newCreds, err := newConfig.GenerateCredentials(ctx)
 	if err != nil {
@@ -100,7 +116,7 @@ func (c *Config) RotateServiceAccountKey(ctx context.Context, permissions []stri
 	}
 
 	err = iamClient.DeleteServiceAccountKey(ctx, &adminpb.DeleteServiceAccountKeyRequest{
-		Name: fmt.Sprintf("%s/%s/keys/%s", CreateServiceAccountKeyResourceName, c.ClientEmail, c.PrivateKeyId),
+		Name: fmt.Sprintf("projects/%s/serviceAccounts/%s/keys/%s", c.ProjectId, c.ClientEmail, c.PrivateKeyId),
 	})
 	if err != nil {
 		return status.Errorf(codes.Internal, "error deleting service account key: %v", err)
@@ -140,7 +156,7 @@ func (c *Config) DeletePrivateKey(ctx context.Context, opts ...option.ClientOpti
 	}
 
 	err = iamClient.DeleteServiceAccountKey(ctx, &adminpb.DeleteServiceAccountKeyRequest{
-		Name: fmt.Sprintf("projects/-/serviceAccounts/%s/keys/%s", c.ClientEmail, c.PrivateKeyId),
+		Name: fmt.Sprintf("projects/%s/serviceAccounts/%s/keys/%s", c.ProjectId, c.ClientEmail, c.PrivateKeyId),
 	})
 	if err != nil {
 		return status.Errorf(codes.Unknown, "error deleting service account key: %v", err)
@@ -196,13 +212,4 @@ func (c *Config) ValidateIamPermissions(ctx context.Context, permissions []strin
 	}
 
 	return resp.Permissions, nil
-}
-
-// getPrivateKeyIdFromName extracts the private key ID from the name of a service account key.
-func getPrivateKeyIdFromName(input string) (string, error) {
-	lastSlashIndex := strings.LastIndex(input, "/")
-	if lastSlashIndex != -1 {
-		return input[lastSlashIndex+1:], nil
-	}
-	return "", fmt.Errorf("could not find private key ID in %s", input)
 }

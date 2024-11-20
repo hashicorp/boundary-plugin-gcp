@@ -37,6 +37,24 @@ func NewPersistedState(opt ...Option) (*PersistedState, error) {
 	return s, nil
 }
 
+// RotateCreds rotates the credentials for the GCP catalog and updates the last rotated time.
+func (s *PersistedState) RotateCreds(ctx context.Context, permissions []string, opts ...option.ClientOption) error {
+	if s.CredentialsConfig == nil {
+		return status.Error(codes.InvalidArgument, "missing credentials config")
+	}
+	if !s.CredentialsConfig.IsRotatable() {
+		return status.Error(codes.InvalidArgument, "cannot rotate non-rotatable credentials")
+	}
+
+	err := s.CredentialsConfig.RotateServiceAccountKey(ctx, permissions, opts...)
+	if err != nil {
+		return status.Errorf(codes.Internal, "failed to rotate credentials: %v", err)
+	}
+	s.CredsLastRotatedTime = time.Now()
+
+	return nil
+}
+
 // ReplaceCreds replaces the private key in the state with a new key.
 // If the existing key was rotated at any point in time, it is
 // deleted first, otherwise it's left alone. This method returns a
