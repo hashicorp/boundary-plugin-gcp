@@ -167,23 +167,16 @@ func (c *Config) DeletePrivateKey(ctx context.Context, opts ...option.ClientOpti
 
 // ValidateIamPermissions tests the IAM permissions for the credentials.
 // It returns the granted permissions if successful.
+//
+// The caller needs to ensure either a token source is passed in for
+// authentication or authentication is provided by Application Default
+// Credentials
 func (c *Config) ValidateIamPermissions(ctx context.Context, permissions []string, opts ...option.ClientOption) ([]string, error) {
 	if len(permissions) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "permissions are required")
 	}
 
-	creds, err := c.GenerateCredentials(ctx)
-	if err != nil {
-		return nil, status.Errorf(codes.Unauthenticated, "error generating credentials: %v", err)
-	}
-	if creds.TokenSource == nil {
-		return nil, status.Error(codes.Unauthenticated, "error generating credentials: token source is nil")
-	}
-
-	clientOptions := []option.ClientOption{option.WithTokenSource(creds.TokenSource)}
-	clientOptions = append(clientOptions, opts...)
-
-	rmClient, err := resourcemanager.NewProjectsClient(ctx, clientOptions...)
+	rmClient, err := resourcemanager.NewProjectsClient(ctx, opts...)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to create Resource Manager client: %v", err)
 	}

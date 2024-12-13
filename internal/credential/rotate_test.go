@@ -184,16 +184,6 @@ func TestValidateIamPermissions(t *testing.T) {
 			expectedErr: "permissions are required",
 		},
 		{
-			name: "Failed to Generate Credentials",
-			config: &Config{
-				ProjectId:  "test-project-id",
-				PrivateKey: "test-private-key",
-			},
-			permissions: []string{"permission1", "permission2"},
-			wantErr:     true,
-			expectedErr: "failed to generate credentials",
-		},
-		{
 			name: "Failed to Test IAM Permissions",
 			config: &Config{
 				ProjectId:   "test-project-id",
