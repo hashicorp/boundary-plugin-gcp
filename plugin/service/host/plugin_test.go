@@ -878,6 +878,53 @@ func TestCreateCatalog(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "create with application default credentials and credential rotation disabled",
+			req: &pb.OnCreateCatalogRequest{
+				Catalog: &hostcatalogs.HostCatalog{
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								cred.ConstProjectId:                 structpb.NewStringValue("test-project"),
+								cred.ConstZone:                      structpb.NewStringValue("us-central1-a"),
+								cred.ConstDisableCredentialRotation: structpb.NewBoolValue(true),
+							},
+						},
+					},
+				},
+			},
+			catalogOpts: []gcpCatalogPersistedStateOption{
+				withTestInstancesAPIFunc(newTestMockInstances(ctx,
+					nil,
+					testMockInstancesWithListInstancesOutput(&computepb.InstanceList{}),
+					testMockInstancesWithListInstancesError(nil),
+				)),
+			},
+			expectedRsp: &pb.OnCreateCatalogResponse{
+				Persisted: &pb.HostCatalogPersisted{
+					Secrets: &structpb.Struct{
+						Fields: map[string]*structpb.Value{},
+					},
+				},
+			},
+		},
+		{
+			name: "create with application default credentials and credential rotation enabled",
+			req: &pb.OnCreateCatalogRequest{
+				Catalog: &hostcatalogs.HostCatalog{
+					Attrs: &hostcatalogs.HostCatalog_Attributes{
+						Attributes: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								cred.ConstProjectId:                 structpb.NewStringValue("test-project"),
+								cred.ConstZone:                      structpb.NewStringValue("us-central1-a"),
+								cred.ConstDisableCredentialRotation: structpb.NewBoolValue(false),
+							},
+						},
+					},
+				},
+			},
+			expectedErr: "cannot rotate credentials for non-rotatable credentials",
+		},
 	}
 
 	for _, tc := range cases {
