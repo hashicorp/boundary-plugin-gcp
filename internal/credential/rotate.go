@@ -53,6 +53,8 @@ type ServiceAccountPrivateKey struct {
 	ClientX509CertURL       string `json:"client_x509_cert_url"`
 }
 
+// ValidateCredsCallback is called to validate the credentials after rotating the service account key.
+// The callback should return an error if the credentials are invalid.
 type ValidateCredsCallback func(*Config, ...option.ClientOption) error
 
 // RotateServiceAccountKey takes the private key from this credentials config
