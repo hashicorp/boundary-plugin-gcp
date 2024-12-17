@@ -5,9 +5,11 @@ package host
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
+	computepb "cloud.google.com/go/compute/apiv1/computepb"
 	"github.com/hashicorp/boundary-plugin-gcp/internal/credential"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -85,5 +87,46 @@ func TestInstancesClient(t *testing.T) {
 		_, err := state.InstancesClient(ctx, option.WithoutAuthentication())
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "error creating instances client")
+	})
+}
+func TestValidateCredsCallbackFn(t *testing.T) {
+	ctx := context.Background()
+	cred := &credential.PersistedState{
+		CredentialsConfig: &credential.Config{
+			ProjectId: "test-project-id",
+			Zone:      "test-zone",
+		},
+	}
+	state := &gcpCatalogPersistedState{PersistedState: cred}
+
+	t.Run("List instances error", func(t *testing.T) {
+		state.testInstancesAPIFunc = newTestMockInstances(ctx,
+			nil,
+			testMockInstancesWithListInstancesOutput(nil),
+			testMockInstancesWithListInstancesError(errors.New("error listing instances")),
+		)
+
+		callback := state.ValidateCredsCallbackFn(ctx)
+		err := callback(&credential.Config{
+			ProjectId: "test-project-id",
+			Zone:      "test-zone",
+		})
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "error listing instances")
+	})
+
+	t.Run("Success", func(t *testing.T) {
+		state.testInstancesAPIFunc = newTestMockInstances(ctx,
+			nil,
+			testMockInstancesWithListInstancesOutput(&computepb.InstanceList{}),
+			testMockInstancesWithListInstancesError(nil),
+		)
+
+		callback := state.ValidateCredsCallbackFn(ctx)
+		err := callback(&credential.Config{
+			ProjectId: "test-project-id",
+			Zone:      "test-zone",
+		})
+		assert.NoError(t, err)
 	})
 }

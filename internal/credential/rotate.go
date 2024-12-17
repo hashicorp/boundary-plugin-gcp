@@ -6,8 +6,10 @@ package credential
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"slices"
+	"time"
 
 	admin "cloud.google.com/go/iam/admin/apiv1"
 	"cloud.google.com/go/iam/admin/apiv1/adminpb"
@@ -19,9 +21,20 @@ import (
 )
 
 const (
-	ComputeInstancesListPermission        = "compute.instances.list"
+	// ComputeInstancesListPermission is the IAM permission required
+	// to list compute instances.
+	ComputeInstancesListPermission = "compute.instances.list"
+	// IAMServiceAccountKeysCreatePermission is the IAM permission
+	// required to create a service account key.
+	// This permission is required to rotate service account keys.
 	IAMServiceAccountKeysCreatePermission = "iam.serviceAccountKeys.create"
+	// IAMServiceAccountKeysDeletePermission is the IAM permission
+	// required to delete a service account key.
+	// This permission is required to rotate service account keys.
 	IAMServiceAccountKeysDeletePermission = "iam.serviceAccountKeys.delete"
+	// validateServiceAccountKeyTimeout is the timeout for validating
+	// a service account key.
+	validateServiceAccountKeyTimeout = 5 * time.Second
 )
 
 // ServiceAccountPrivateKey represents a decoded PrivateKeyData
@@ -40,6 +53,8 @@ type ServiceAccountPrivateKey struct {
 	ClientX509CertURL       string `json:"client_x509_cert_url"`
 }
 
+type ValidateCredsCallback func(*Config, ...option.ClientOption) error
+
 // RotateServiceAccountKey takes the private key from this credentials config
 // and first creates a new private key and private key id, then deletes the
 // old private key.
@@ -47,7 +62,12 @@ type ServiceAccountPrivateKey struct {
 // If deletion of the old private key is successful, the new private key and
 // private key id are written into the credentials config and nil is returned.
 // On any error, the old credentials are not overwritten.
-func (c *Config) RotateServiceAccountKey(ctx context.Context, permissions []string, opts ...option.ClientOption) error {
+func (c *Config) RotateServiceAccountKey(
+	ctx context.Context,
+	permissions []string,
+	validateCredsCallback ValidateCredsCallback,
+	opts ...option.ClientOption,
+) error {
 	if c.PrivateKey == "" {
 		return status.Error(codes.InvalidArgument, "cannot rotate credentials when private key is not set")
 	}
@@ -104,10 +124,10 @@ func (c *Config) RotateServiceAccountKey(ctx context.Context, permissions []stri
 	clientOptions = []option.ClientOption{option.WithTokenSource(newCreds.TokenSource)}
 	clientOptions = append(clientOptions, opts...)
 
-	// Validate that the new credentials have the necessary permissions.
-	_, err = newConfig.ValidateIamPermissions(ctx, permissions, clientOptions...)
+	// Validate the new service account key
+	err = newConfig.ValidateServiceAccountKey(ctx, permissions, validateCredsCallback, clientOptions...)
 	if err != nil {
-		return status.Errorf(codes.PermissionDenied, "error testing IAM permissions with rotated service account key: %v", err)
+		return status.Errorf(codes.PermissionDenied, "error validating rotated service account key: %v", err)
 	}
 
 	iamClient, err = admin.NewIamClient(ctx, clientOptions...)
@@ -126,6 +146,32 @@ func (c *Config) RotateServiceAccountKey(ctx context.Context, permissions []stri
 	c.PrivateKeyId = newConfig.PrivateKeyId
 
 	return nil
+}
+
+// ValidateServiceAccountKey validates the service account key by checking the IAM permissions
+// and calling the validation callback.
+// The function will retry validation until the timeout is reached.
+func (c *Config) ValidateServiceAccountKey(
+	ctx context.Context,
+	permissions []string,
+	validateCredsCallback ValidateCredsCallback,
+	opts ...option.ClientOption) error {
+	var validatePermissionsErr error
+	var validationCallbackErr error
+
+	for start := time.Now(); time.Since(start) < validateServiceAccountKeyTimeout; time.Sleep(200 * time.Millisecond) {
+		_, validatePermissionsErr = c.ValidateIamPermissions(ctx, permissions, opts...)
+
+		if validateCredsCallback != nil {
+			validationCallbackErr = validateCredsCallback(c, opts...)
+		}
+
+		if validatePermissionsErr == nil && validationCallbackErr == nil {
+			return nil
+		}
+	}
+
+	return errors.Join(validatePermissionsErr, validationCallbackErr)
 }
 
 func (c *Config) DeletePrivateKey(ctx context.Context, opts ...option.ClientOption) error {
@@ -172,18 +218,7 @@ func (c *Config) ValidateIamPermissions(ctx context.Context, permissions []strin
 		return nil, status.Error(codes.InvalidArgument, "permissions are required")
 	}
 
-	creds, err := c.GenerateCredentials(ctx)
-	if err != nil {
-		return nil, status.Errorf(codes.Unauthenticated, "error generating credentials: %v", err)
-	}
-	if creds.TokenSource == nil {
-		return nil, status.Error(codes.Unauthenticated, "error generating credentials: token source is nil")
-	}
-
-	clientOptions := []option.ClientOption{option.WithTokenSource(creds.TokenSource)}
-	clientOptions = append(clientOptions, opts...)
-
-	rmClient, err := resourcemanager.NewProjectsClient(ctx, clientOptions...)
+	rmClient, err := resourcemanager.NewProjectsClient(ctx, opts...)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to create Resource Manager client: %v", err)
 	}
