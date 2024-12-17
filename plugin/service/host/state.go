@@ -13,6 +13,7 @@ import (
 	"github.com/googleapis/gax-go/v2"
 	"github.com/hashicorp/boundary-plugin-gcp/internal/credential"
 	pb "github.com/hashicorp/boundary/sdk/pbs/plugin"
+	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
 	"google.golang.org/protobuf/types/known/structpb"
 )
@@ -98,4 +99,31 @@ func (s *gcpCatalogPersistedState) InstancesClient(
 	}
 
 	return client, nil
+}
+
+// validateCredsCallbackFn returns a ValidateCredsCallback function that
+// validates the credentials by listing instances in the project and zone.
+func (s *gcpCatalogPersistedState) ValidateCredsCallbackFn(
+	ctx context.Context,
+	opts ...option.ClientOption,
+) credential.ValidateCredsCallback {
+	return func(config *credential.Config, opts ...option.ClientOption) error {
+		s.CredentialsConfig = config
+		instancesClient, err := s.InstancesClient(ctx, opts...)
+		if err != nil {
+			return fmt.Errorf("error creating instances client: %w", err)
+		}
+
+		it := instancesClient.List(ctx, &computepb.ListInstancesRequest{
+			Project: s.CredentialsConfig.ProjectId,
+			Zone:    s.CredentialsConfig.Zone,
+		})
+
+		_, err = it.Next()
+		if err != nil && err != iterator.Done {
+			return fmt.Errorf("error listing instances: %w", err)
+		}
+
+		return nil
+	}
 }

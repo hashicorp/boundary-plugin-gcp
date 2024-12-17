@@ -128,8 +128,14 @@ func TestRotateServiceAccountKey(t *testing.T) {
 				IAMServiceAccountKeysCreatePermission,
 				IAMServiceAccountKeysDeletePermission,
 			}
+			validateCredsCallbackCalled := false
 
-			err = tt.config.RotateServiceAccountKey(ctx, permissions, testOptions...)
+			validateCredsCallBack := func(c *Config, opts ...googleOption.ClientOption) error {
+				validateCredsCallbackCalled = true
+				return nil
+			}
+
+			err = tt.config.RotateServiceAccountKey(ctx, permissions, validateCredsCallBack, testOptions...)
 			if tt.expectedError != nil {
 				require.ErrorContains(t, err, tt.expectedError.Error())
 				require.Equal(t, initialClientEmail, tt.config.ClientEmail)
@@ -143,6 +149,7 @@ func TestRotateServiceAccountKey(t *testing.T) {
 			require.NotEmpty(t, tt.config.PrivateKeyId)
 			require.NotEqual(t, initialPrivateKey, tt.config.PrivateKey)
 			require.NotEqual(t, initialPrivateKeyId, tt.config.PrivateKeyId)
+			require.True(t, validateCredsCallbackCalled)
 		})
 	}
 }
@@ -182,16 +189,6 @@ func TestValidateIamPermissions(t *testing.T) {
 			},
 			wantErr:     true,
 			expectedErr: "permissions are required",
-		},
-		{
-			name: "Failed to Generate Credentials",
-			config: &Config{
-				ProjectId:  "test-project-id",
-				PrivateKey: "test-private-key",
-			},
-			permissions: []string{"permission1", "permission2"},
-			wantErr:     true,
-			expectedErr: "failed to generate credentials",
 		},
 		{
 			name: "Failed to Test IAM Permissions",

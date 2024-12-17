@@ -38,7 +38,11 @@ func NewPersistedState(opt ...Option) (*PersistedState, error) {
 }
 
 // RotateCreds rotates the credentials for the GCP catalog and updates the last rotated time.
-func (s *PersistedState) RotateCreds(ctx context.Context, permissions []string, opts ...option.ClientOption) error {
+func (s *PersistedState) RotateCreds(
+	ctx context.Context,
+	permissions []string,
+	validateCredsCallback ValidateCredsCallback,
+	opts ...option.ClientOption) error {
 	if s.CredentialsConfig == nil {
 		return status.Error(codes.InvalidArgument, "missing credentials config")
 	}
@@ -46,7 +50,7 @@ func (s *PersistedState) RotateCreds(ctx context.Context, permissions []string, 
 		return status.Error(codes.InvalidArgument, "cannot rotate non-rotatable credentials")
 	}
 
-	err := s.CredentialsConfig.RotateServiceAccountKey(ctx, permissions, opts...)
+	err := s.CredentialsConfig.RotateServiceAccountKey(ctx, permissions, validateCredsCallback, opts...)
 	if err != nil {
 		return status.Errorf(codes.Internal, "failed to rotate credentials: %v", err)
 	}

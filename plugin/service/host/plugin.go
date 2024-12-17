@@ -92,7 +92,17 @@ func (p *HostPlugin) OnCreateCatalog(ctx context.Context, req *pb.OnCreateCatalo
 	}
 
 	if credState.CredentialsConfig.IsRotatable() && !catalogAttributes.DisableCredentialRotation {
-		if err := credState.RotateCreds(ctx, permissions, p.testGCPClientOpts...); err != nil {
+		state, err := newGCPCatalogPersistedState(
+			append([]gcpCatalogPersistedStateOption{
+				withCredentials(credState),
+			}, p.testCatalogStateOpts...)...,
+		)
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "error setting up persisted state: %s", err)
+		}
+		validateCredsCallback := state.ValidateCredsCallbackFn(ctx, p.testGCPClientOpts...)
+
+		if err := credState.RotateCreds(ctx, permissions, validateCredsCallback, p.testGCPClientOpts...); err != nil {
 			return nil, err
 		}
 	}
@@ -219,7 +229,17 @@ func (p *HostPlugin) OnUpdateCatalog(ctx context.Context, req *pb.OnUpdateCatalo
 		// If we're enabling rotation now but didn't before, or have
 		// freshly replaced credentials, we can rotate here.
 		if !newCatalogAttributes.DisableCredentialRotation && credState.CredsLastRotatedTime.IsZero() {
-			if err := credState.RotateCreds(ctx, permissions, p.testGCPClientOpts...); err != nil {
+			state, err := newGCPCatalogPersistedState(
+				append([]gcpCatalogPersistedStateOption{
+					withCredentials(credState),
+				}, p.testCatalogStateOpts...)...,
+			)
+			if err != nil {
+				return nil, status.Errorf(codes.Internal, "error setting up persisted state: %s", err)
+			}
+			validateCredsCallback := state.ValidateCredsCallbackFn(ctx, p.testGCPClientOpts...)
+
+			if err := credState.RotateCreds(ctx, permissions, validateCredsCallback, p.testGCPClientOpts...); err != nil {
 				return nil, err
 			}
 		}

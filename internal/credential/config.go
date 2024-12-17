@@ -98,6 +98,7 @@ func (c *Config) toCredentials() *credentials {
 func (c *Config) clone() *Config {
 	return &Config{
 		ProjectId:              c.ProjectId,
+		Zone:                   c.Zone,
 		PrivateKey:             c.PrivateKey,
 		PrivateKeyId:           c.PrivateKeyId,
 		ClientEmail:            c.ClientEmail,
