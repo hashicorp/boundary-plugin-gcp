@@ -108,7 +108,7 @@ func buildListInstancesRequest(attributes *SetAttributes, catalog *CatalogAttrib
 		return nil, fmt.Errorf("error building filters: %w", err)
 	}
 
-	if len(filters) > 1 {
+	if len(filters) > 0 {
 		filters := strings.Join(filters, " AND ")
 		request.Filter = &filters
 	}

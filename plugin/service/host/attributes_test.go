@@ -183,6 +183,23 @@ func TestBuildListInstancesRequest(t *testing.T) {
 			},
 			expectedErrContains: "error building filters",
 		},
+		{
+			name: "valid request with no filters",
+			attributes: &SetAttributes{
+				Filters: []string{},
+			},
+			catalog: &CatalogAttributes{
+				CredentialAttributes: &cred.CredentialAttributes{
+					ProjectId: "test-12345",
+					Zone:      "us-central-1a",
+				},
+			},
+			expected: &computepb.ListInstancesRequest{
+				Project: "test-12345",
+				Zone:    "us-central-1a",
+				Filter:  stringPtr("status = running"),
+			},
+		},
 	}
 
 	for _, tc := range cases {
