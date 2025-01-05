@@ -32,9 +32,6 @@ const (
 	// required to delete a service account key.
 	// This permission is required to rotate service account keys.
 	IAMServiceAccountKeysDeletePermission = "iam.serviceAccountKeys.delete"
-	// validateServiceAccountKeyTimeout is the timeout for validating
-	// a service account key.
-	validateServiceAccountKeyTimeout = 5 * time.Second
 )
 
 // ServiceAccountPrivateKey represents a decoded PrivateKeyData
@@ -161,19 +158,29 @@ func (c *Config) ValidateServiceAccountKey(
 	var validatePermissionsErr error
 	var validationCallbackErr error
 
-	for start := time.Now(); time.Since(start) < validateServiceAccountKeyTimeout; time.Sleep(200 * time.Millisecond) {
-		_, validatePermissionsErr = c.ValidateIamPermissions(ctx, permissions, opts...)
+	ticker := time.NewTicker(200 * time.Millisecond)
+	defer ticker.Stop()
 
-		if validateCredsCallback != nil {
-			validationCallbackErr = validateCredsCallback(c, opts...)
-		}
+	timeout := time.After(c.validateServiceAccountKeyTimeout)
 
-		if validatePermissionsErr == nil && validationCallbackErr == nil {
-			return nil
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-timeout:
+			return errors.Join(validatePermissionsErr, validationCallbackErr)
+		case <-ticker.C:
+			_, validatePermissionsErr = c.ValidateIamPermissions(ctx, permissions, opts...)
+
+			if validateCredsCallback != nil {
+				validationCallbackErr = validateCredsCallback(c, opts...)
+			}
+
+			if validatePermissionsErr == nil && validationCallbackErr == nil {
+				return nil
+			}
 		}
 	}
-
-	return errors.Join(validatePermissionsErr, validationCallbackErr)
 }
 
 func (c *Config) DeletePrivateKey(ctx context.Context, opts ...option.ClientOption) error {

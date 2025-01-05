@@ -41,17 +41,21 @@ const (
 	// and then controlling the service account's access by granting it IAM roles.
 	// https://cloud.google.com/compute/docs/access/service-accounts#scopes_best_practice
 	defaultGCPScope = "https://www.googleapis.com/auth/cloud-platform"
+	// defaultValidateServiceAccountKeyTimeout is the timeout for validating
+	// a service account key.
+	defaultValidateServiceAccountKeyTimeout = 5 * time.Second
 )
 
 // Config is the configuration for the GCP credential.
 type Config struct {
-	ProjectId              string
-	PrivateKey             string
-	PrivateKeyId           string
-	Zone                   string
-	ClientEmail            string
-	TargetServiceAccountId string
-	Scopes                 []string
+	ProjectId                        string
+	PrivateKey                       string
+	PrivateKeyId                     string
+	Zone                             string
+	ClientEmail                      string
+	TargetServiceAccountId           string
+	Scopes                           []string
+	validateServiceAccountKeyTimeout time.Duration
 }
 
 // credentials represents a simplified version of the GCP credentials file format.
@@ -72,13 +76,14 @@ func NewConfig(opt ...Option) (*Config, error) {
 		return nil, err
 	}
 	c := &Config{
-		ProjectId:              opts.WithProjectId,
-		PrivateKey:             opts.WithPrivateKey,
-		PrivateKeyId:           opts.WithPrivateKeyId,
-		ClientEmail:            opts.WithClientEmail,
-		TargetServiceAccountId: opts.WithTargetServiceAccountId,
-		Zone:                   opts.WithZone,
-		Scopes:                 opts.WithScopes,
+		ProjectId:                        opts.WithProjectId,
+		PrivateKey:                       opts.WithPrivateKey,
+		PrivateKeyId:                     opts.WithPrivateKeyId,
+		ClientEmail:                      opts.WithClientEmail,
+		TargetServiceAccountId:           opts.WithTargetServiceAccountId,
+		Zone:                             opts.WithZone,
+		Scopes:                           opts.WithScopes,
+		validateServiceAccountKeyTimeout: defaultValidateServiceAccountKeyTimeout,
 	}
 	return c, nil
 }
@@ -97,13 +102,14 @@ func (c *Config) toCredentials() *credentials {
 // clone returns a copy of the configuration.
 func (c *Config) clone() *Config {
 	return &Config{
-		ProjectId:              c.ProjectId,
-		Zone:                   c.Zone,
-		PrivateKey:             c.PrivateKey,
-		PrivateKeyId:           c.PrivateKeyId,
-		ClientEmail:            c.ClientEmail,
-		TargetServiceAccountId: c.TargetServiceAccountId,
-		Scopes:                 c.Scopes,
+		ProjectId:                        c.ProjectId,
+		Zone:                             c.Zone,
+		PrivateKey:                       c.PrivateKey,
+		PrivateKeyId:                     c.PrivateKeyId,
+		ClientEmail:                      c.ClientEmail,
+		TargetServiceAccountId:           c.TargetServiceAccountId,
+		Scopes:                           c.Scopes,
+		validateServiceAccountKeyTimeout: c.validateServiceAccountKeyTimeout,
 	}
 }
 
