@@ -161,14 +161,16 @@ func (c *Config) ValidateServiceAccountKey(
 	ticker := time.NewTicker(200 * time.Millisecond)
 	defer ticker.Stop()
 
-	timeout := time.After(c.validateServiceAccountKeyTimeout)
+	ctx, cancel := context.WithTimeout(ctx, c.validateServiceAccountKeyTimeout)
+	defer cancel()
 
 	for {
 		select {
 		case <-ctx.Done():
+			if ctx.Err() == context.DeadlineExceeded {
+				return fmt.Errorf("failed to validate service account key before timeout: %w", errors.Join(validatePermissionsErr, validationCallbackErr))
+			}
 			return ctx.Err()
-		case <-timeout:
-			return errors.Join(validatePermissionsErr, validationCallbackErr)
 		case <-ticker.C:
 			_, validatePermissionsErr = c.ValidateIamPermissions(ctx, permissions, opts...)
 

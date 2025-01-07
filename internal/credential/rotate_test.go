@@ -269,7 +269,7 @@ func TestValidateIamPermissions(t *testing.T) {
 func TestValidateServiceAccountKey(t *testing.T) {
 	ctx := context.Background()
 	testResourceServer := &testResourceServer{}
-	testValidateTimeout := 200 * time.Millisecond
+	testValidateTimeout := 1 * time.Second
 
 	tests := []struct {
 		name                    string
@@ -329,7 +329,7 @@ func TestValidateServiceAccountKey(t *testing.T) {
 				IAMServiceAccountKeysDeletePermission,
 			},
 			testIamPermissionsError: errors.New("IAM permissions error"),
-			expectedError:           errors.New("IAM permissions error"),
+			expectedError:           errors.New("failed to validate IAM permissions"),
 		},
 	}
 
