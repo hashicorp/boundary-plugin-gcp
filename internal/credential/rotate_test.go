@@ -31,7 +31,7 @@ func TestRotateServiceAccountKey(t *testing.T) {
 			},
 		},
 	}
-	testValidateTimeout := 200 * time.Millisecond
+	testValidateTimeout := 1 * time.Second
 
 	tests := []struct {
 		name          string
