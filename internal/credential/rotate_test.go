@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"cloud.google.com/go/iam/admin/apiv1/adminpb"
 	"cloud.google.com/go/iam/apiv1/iampb"
@@ -30,6 +31,7 @@ func TestRotateServiceAccountKey(t *testing.T) {
 			},
 		},
 	}
+	testValidateTimeout := 1 * time.Second
 
 	tests := []struct {
 		name          string
@@ -76,9 +78,10 @@ func TestRotateServiceAccountKey(t *testing.T) {
 		{
 			name: "DeleteServiceAccountKey returns error",
 			config: &Config{
-				PrivateKey:   "some-private-key",
-				PrivateKeyId: "some-private-key-id",
-				ClientEmail:  "client@example.com",
+				PrivateKey:                       "some-private-key",
+				PrivateKeyId:                     "some-private-key-id",
+				ClientEmail:                      "client@example.com",
+				validateServiceAccountKeyTimeout: testValidateTimeout,
 			},
 			setup: func() {
 				testIAMAdminServer.testCreateServiceAccountKeyError = nil
@@ -89,9 +92,10 @@ func TestRotateServiceAccountKey(t *testing.T) {
 		{
 			name: "Successful rotation",
 			config: &Config{
-				PrivateKey:   "some-private-key",
-				PrivateKeyId: "some-private-key-id",
-				ClientEmail:  "client@example.com",
+				PrivateKey:                       "some-private-key",
+				PrivateKeyId:                     "some-private-key-id",
+				ClientEmail:                      "client@example.com",
+				validateServiceAccountKeyTimeout: testValidateTimeout,
 			},
 			setup: func() {
 				testIAMAdminServer.testCreateServiceAccountKeyError = nil
@@ -261,6 +265,104 @@ func TestValidateIamPermissions(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateServiceAccountKey(t *testing.T) {
+	ctx := context.Background()
+	testResourceServer := &testResourceServer{}
+	testValidateTimeout := 1 * time.Second
+
+	tests := []struct {
+		name                    string
+		config                  *Config
+		permissions             []string
+		validateCredsCallback   ValidateCredsCallback
+		testIamPermissionsError error
+		expectedError           error
+	}{
+		{
+			name: "Successful validation",
+			config: &Config{
+				ProjectId:                        "test-project-id",
+				PrivateKey:                       "test-private-key",
+				ClientEmail:                      "test@test.com",
+				validateServiceAccountKeyTimeout: testValidateTimeout,
+			},
+			permissions: []string{
+				ComputeInstancesListPermission,
+				IAMServiceAccountKeysCreatePermission,
+				IAMServiceAccountKeysDeletePermission,
+			},
+			validateCredsCallback: func(c *Config, opts ...googleOption.ClientOption) error {
+				return nil
+			},
+			expectedError: nil,
+		},
+		{
+			name: "Validation callback returns error",
+			config: &Config{
+				ProjectId:                        "test-project-id",
+				PrivateKey:                       "test-private-key",
+				ClientEmail:                      "test@test.com",
+				validateServiceAccountKeyTimeout: testValidateTimeout,
+			},
+			permissions: []string{
+				ComputeInstancesListPermission,
+				IAMServiceAccountKeysCreatePermission,
+				IAMServiceAccountKeysDeletePermission,
+			},
+			validateCredsCallback: func(c *Config, opts ...googleOption.ClientOption) error {
+				return errors.New("validation callback error")
+			},
+			expectedError: errors.New("validation callback error"),
+		},
+		{
+			name: "IAM permissions validation returns error",
+			config: &Config{
+				ProjectId:                        "test-project-id",
+				PrivateKey:                       "test-private-key",
+				ClientEmail:                      "test@test.com",
+				validateServiceAccountKeyTimeout: testValidateTimeout,
+			},
+			permissions: []string{
+				ComputeInstancesListPermission,
+				IAMServiceAccountKeysCreatePermission,
+				IAMServiceAccountKeysDeletePermission,
+			},
+			testIamPermissionsError: errors.New("IAM permissions error"),
+			expectedError:           errors.New("failed to validate IAM permissions"),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			testResourceServer.testIamPermissionsResponse = &iampb.TestIamPermissionsResponse{
+				Permissions: tt.permissions,
+			}
+			testResourceServer.testIamPermissionsError = tt.testIamPermissionsError
+
+			gsrv := NewGRPCServer()
+			resourcemanagerpb.RegisterProjectsServer(gsrv.Server, testResourceServer)
+			addr, err := gsrv.Start()
+			require.NoError(t, err)
+
+			testOptions := []googleOption.ClientOption{
+				googleOption.WithEndpoint(addr),
+				googleOption.WithoutAuthentication(),
+				googleOption.WithGRPCDialOption(grpc.WithTransportCredentials(insecure.NewCredentials())),
+				googleOption.WithTokenSource(nil),
+			}
+
+			err = tt.config.ValidateServiceAccountKey(ctx, tt.permissions, tt.validateCredsCallback, testOptions...)
+			if tt.expectedError != nil {
+				require.ErrorContains(t, err, tt.expectedError.Error())
+				return
+			}
+
+			require.NoError(t, err)
+		})
+	}
+}
+
 func TestDeletePrivateKey(t *testing.T) {
 	testIAMAdminServer := &testIAMAdminServer{}
 
