@@ -617,11 +617,6 @@ func validateSet(s *hostsets.HostSet) error {
 	}
 
 	badFields := make(map[string]string)
-	_, filterSet := attrMap[ConstListInstancesFilter]
-
-	if filterSet && len(attrs.Filters) == 0 {
-		badFields[fmt.Sprintf("attributes.%s", ConstListInstancesFilter)] = "must not be empty"
-	}
 
 	for f := range attrMap {
 		if _, ok := allowedSetFields[f]; !ok {
