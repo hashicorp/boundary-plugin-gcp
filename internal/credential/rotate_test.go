@@ -76,7 +76,7 @@ func TestRotateServiceAccountKey(t *testing.T) {
 			expectedError: errors.New("create key error"),
 		},
 		{
-			name: "DeleteServiceAccountKey returns error",
+			name: "DeleteServiceAccountKey old key fails and rollback fails",
 			config: &Config{
 				PrivateKey:                       "some-private-key",
 				PrivateKeyId:                     "some-private-key-id",
@@ -85,9 +85,31 @@ func TestRotateServiceAccountKey(t *testing.T) {
 			},
 			setup: func() {
 				testIAMAdminServer.testCreateServiceAccountKeyError = nil
-				testIAMAdminServer.testDeleteServiceAccountKeyError = errors.New("delete key error")
+				testIAMAdminServer.testDeleteServiceAccountKeyError = nil
+				testIAMAdminServer.testDeleteServiceAccountKeyErrors = []error{
+					errors.New("delete key error"),
+					errors.New("rollback key error"),
+				}
 			},
-			expectedError: errors.New("delete key error"),
+			expectedError: errors.New("error rolling back new rotated service account key"),
+		},
+		{
+			name: "DeleteServiceAccountKey old key fails and rollback succeeds",
+			config: &Config{
+				PrivateKey:                       "some-private-key",
+				PrivateKeyId:                     "some-private-key-id",
+				ClientEmail:                      "client@example.com",
+				validateServiceAccountKeyTimeout: testValidateTimeout,
+			},
+			setup: func() {
+				testIAMAdminServer.testCreateServiceAccountKeyError = nil
+				testIAMAdminServer.testDeleteServiceAccountKeyError = nil
+				testIAMAdminServer.testDeleteServiceAccountKeyErrors = []error{
+					errors.New("delete key error"),
+					nil,
+				}
+			},
+			expectedError: errors.New("successfully rolled back new rotated service account key"),
 		},
 		{
 			name: "Successful rotation",
@@ -100,6 +122,7 @@ func TestRotateServiceAccountKey(t *testing.T) {
 			setup: func() {
 				testIAMAdminServer.testCreateServiceAccountKeyError = nil
 				testIAMAdminServer.testDeleteServiceAccountKeyError = nil
+				testIAMAdminServer.testDeleteServiceAccountKeyErrors = nil
 			},
 			expectedError: nil,
 		},

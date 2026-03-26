@@ -134,11 +134,22 @@ func (c *Config) RotateServiceAccountKey(
 		return status.Errorf(codes.Internal, "error creating IAM client with rotated service account key: %v", err)
 	}
 
+	oldKeyName := fmt.Sprintf("projects/%s/serviceAccounts/%s/keys/%s", c.ProjectId, c.ClientEmail, c.PrivateKeyId)
 	err = iamClient.DeleteServiceAccountKey(ctx, &adminpb.DeleteServiceAccountKeyRequest{
-		Name: fmt.Sprintf("projects/%s/serviceAccounts/%s/keys/%s", c.ProjectId, c.ClientEmail, c.PrivateKeyId),
+		Name: oldKeyName,
 	})
+	// If deletion of the old key fails, attempt to delete the new key to avoid leaving a dangling key, then return an error.
 	if err != nil {
-		return status.Errorf(codes.Internal, "error deleting service account key: %v", err)
+		newKeyName := fmt.Sprintf("projects/%s/serviceAccounts/%s/keys/%s", newConfig.ProjectId, newConfig.ClientEmail, newConfig.PrivateKeyId)
+		rollbackErr := iamClient.DeleteServiceAccountKey(ctx, &adminpb.DeleteServiceAccountKeyRequest{
+			Name: newKeyName,
+		})
+		// If rollback also fails, return an error indicating both the failure to delete the old key and the failure to roll back the new key.
+		if rollbackErr != nil {
+			return status.Errorf(codes.Internal, "error deleting service account key: %v; error rolling back new rotated service account key: %v", err, rollbackErr)
+		}
+
+		return status.Errorf(codes.Internal, "error deleting service account key: %v; successfully rolled back new rotated service account key", err)
 	}
 
 	c.PrivateKey = newConfig.PrivateKey

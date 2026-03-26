@@ -18,8 +18,9 @@ import (
 
 type testIAMAdminServer struct {
 	adminpb.UnimplementedIAMServer
-	testCreateServiceAccountKeyError error
-	testDeleteServiceAccountKeyError error
+	testCreateServiceAccountKeyError  error
+	testDeleteServiceAccountKeyError  error
+	testDeleteServiceAccountKeyErrors []error
 }
 
 func NewTestIAMAdminServer(createServiceAccountKeyError error, deleteServiceAccountKeyError error) *testIAMAdminServer {
@@ -46,6 +47,13 @@ func (f *testIAMAdminServer) CreateServiceAccountKey(ctx context.Context, req *a
 }
 
 func (f *testIAMAdminServer) DeleteServiceAccountKey(ctx context.Context, req *adminpb.DeleteServiceAccountKeyRequest) (*emptypb.Empty, error) {
+	// Use queued delete results so tests can separately control deleting the old key and deleting the new key during rollback.
+	if len(f.testDeleteServiceAccountKeyErrors) > 0 {
+		err := f.testDeleteServiceAccountKeyErrors[0]
+		f.testDeleteServiceAccountKeyErrors = f.testDeleteServiceAccountKeyErrors[1:]
+		return &emptypb.Empty{}, err
+	}
+
 	return &emptypb.Empty{}, f.testDeleteServiceAccountKeyError
 }
 
