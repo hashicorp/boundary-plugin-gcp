@@ -133,10 +133,10 @@ func (c *Config) RotateServiceAccountKey(
 			Name: fmt.Sprintf("projects/%s/serviceAccounts/%s/keys/%s", newConfig.ProjectId, newConfig.ClientEmail, newConfig.PrivateKeyId),
 		})
 		if rollbackErr != nil {
-			return status.Errorf(codes.PermissionDenied, "error validating rotated service account key: %v; error rolling back new rotated service account key: %v", err, rollbackErr)
+			return status.Errorf(codes.PermissionDenied, "error validating rotated service account key: %v; error rolling back newly created service account key: %v", err, rollbackErr)
 		}
 
-		return status.Errorf(codes.PermissionDenied, "error validating rotated service account key: %v; successfully rolled back new rotated service account key", err)
+		return status.Errorf(codes.PermissionDenied, "error validating rotated service account key: %v; successfully rolled back newly created service account key", err)
 	}
 
 	newClient, err := admin.NewIamClient(ctx, clientOptions...)
@@ -155,10 +155,10 @@ func (c *Config) RotateServiceAccountKey(
 		})
 		// If rollback also fails, return an error indicating both the failure to delete the old key and the failure to roll back the new key.
 		if rollbackErr != nil {
-			return status.Errorf(codes.Internal, "error deleting service account key: %v; error rolling back new rotated service account key: %v", err, rollbackErr)
+			return status.Errorf(codes.Internal, "error deleting service account key: %v; error rolling back newly created service account key: %v", err, rollbackErr)
 		}
 
-		return status.Errorf(codes.Internal, "error deleting service account key: %v; successfully rolled back new rotated service account key", err)
+		return status.Errorf(codes.Internal, "error deleting service account key: %v; successfully rolled back newly created service account key", err)
 	}
 
 	c.PrivateKey = newConfig.PrivateKey

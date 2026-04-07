@@ -92,7 +92,7 @@ func TestRotateServiceAccountKey(t *testing.T) {
 				testIAMAdminServer.testDeleteServiceAccountKeyErrors = []error{nil}
 				testResourceServer.testIamPermissionsError = errors.New("iam permissions error")
 			},
-			expectedError: errors.New("successfully rolled back new rotated service account key"),
+			expectedError: errors.New("successfully rolled back newly created service account key"),
 		},
 		{
 			name: "ValidateServiceAccountKey fails and rollback fails",
@@ -108,7 +108,7 @@ func TestRotateServiceAccountKey(t *testing.T) {
 				testIAMAdminServer.testDeleteServiceAccountKeyErrors = []error{errors.New("rollback key error")}
 				testResourceServer.testIamPermissionsError = errors.New("iam permissions error")
 			},
-			expectedError: errors.New("error rolling back new rotated service account key"),
+			expectedError: errors.New("error rolling back newly created service account key"),
 		},
 		{
 			name: "DeleteServiceAccountKey old key fails and rollback fails",
@@ -127,7 +127,7 @@ func TestRotateServiceAccountKey(t *testing.T) {
 				}
 				testResourceServer.testIamPermissionsError = nil
 			},
-			expectedError: errors.New("error rolling back new rotated service account key"),
+			expectedError: errors.New("error rolling back newly created service account key"),
 		},
 		{
 			name: "DeleteServiceAccountKey old key fails and rollback succeeds",
@@ -146,7 +146,7 @@ func TestRotateServiceAccountKey(t *testing.T) {
 				}
 				testResourceServer.testIamPermissionsError = nil
 			},
-			expectedError: errors.New("successfully rolled back new rotated service account key"),
+			expectedError: errors.New("successfully rolled back newly created service account key"),
 		},
 		{
 			name: "Successful rotation",
