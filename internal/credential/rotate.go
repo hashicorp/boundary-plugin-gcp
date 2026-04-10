@@ -133,7 +133,7 @@ func (c *Config) RotateServiceAccountKey(
 			Name: fmt.Sprintf("projects/%s/serviceAccounts/%s/keys/%s", newConfig.ProjectId, newConfig.ClientEmail, newConfig.PrivateKeyId),
 		})
 		if rollbackErr != nil {
-			return status.Errorf(codes.PermissionDenied, "error validating rotated service account key: %v; error rolling back newly created service account key: %v; service account may have multiple active keys", err, rollbackErr)
+			return status.Errorf(codes.Internal, "error validating rotated service account key: %v; error rolling back newly created service account key: %v; service account may have multiple active keys", err, rollbackErr)
 		}
 
 		return status.Errorf(codes.PermissionDenied, "error validating rotated service account key: %v; successfully rolled back newly created service account key", err)
