@@ -60,6 +60,8 @@ type ValidateCredsCallback func(*Config, ...option.ClientOption) error
 //
 // If deletion of the old private key is successful, the new private key and
 // private key id are written into the credentials config and nil is returned.
+// If validation fails or deleting the old private key fails, the function
+// attempts to delete the newly created key as a rollback operation.
 // On any error, the old credentials are not overwritten.
 func (c *Config) RotateServiceAccountKey(
 	ctx context.Context,
@@ -88,12 +90,12 @@ func (c *Config) RotateServiceAccountKey(
 	clientOptions := []option.ClientOption{option.WithTokenSource(creds.TokenSource)}
 	clientOptions = append(clientOptions, opts...)
 
-	iamClient, err := admin.NewIamClient(ctx, clientOptions...)
+	currentIAMClient, err := admin.NewIamClient(ctx, clientOptions...)
 	if err != nil {
 		return status.Errorf(codes.Internal, "error creating IAM client: %v", err)
 	}
 
-	createServiceAccountKeyRes, err := iamClient.CreateServiceAccountKey(ctx, &adminpb.CreateServiceAccountKeyRequest{
+	createServiceAccountKeyRes, err := currentIAMClient.CreateServiceAccountKey(ctx, &adminpb.CreateServiceAccountKeyRequest{
 		Name:           fmt.Sprintf("projects/%s/serviceAccounts/%s", c.ProjectId, c.ClientEmail),
 		PrivateKeyType: adminpb.ServiceAccountPrivateKeyType_TYPE_GOOGLE_CREDENTIALS_FILE,
 		KeyAlgorithm:   adminpb.ServiceAccountKeyAlgorithm_KEY_ALG_RSA_2048,
@@ -126,19 +128,37 @@ func (c *Config) RotateServiceAccountKey(
 	// Validate the new service account key
 	err = newConfig.ValidateServiceAccountKey(ctx, permissions, validateCredsCallback, clientOptions...)
 	if err != nil {
-		return status.Errorf(codes.PermissionDenied, "error validating rotated service account key: %v", err)
+		// Roll back the new key if validation fails.
+		rollbackErr := currentIAMClient.DeleteServiceAccountKey(ctx, &adminpb.DeleteServiceAccountKeyRequest{
+			Name: fmt.Sprintf("projects/%s/serviceAccounts/%s/keys/%s", newConfig.ProjectId, newConfig.ClientEmail, newConfig.PrivateKeyId),
+		})
+		if rollbackErr != nil {
+			return status.Errorf(codes.Internal, "error validating rotated service account key: %v; error rolling back newly created service account key: %v; service account may have multiple active keys", err, rollbackErr)
+		}
+
+		return status.Errorf(codes.PermissionDenied, "error validating rotated service account key: %v; successfully rolled back newly created service account key", err)
 	}
 
-	iamClient, err = admin.NewIamClient(ctx, clientOptions...)
+	newIAMClient, err := admin.NewIamClient(ctx, clientOptions...)
 	if err != nil {
 		return status.Errorf(codes.Internal, "error creating IAM client with rotated service account key: %v", err)
 	}
 
-	err = iamClient.DeleteServiceAccountKey(ctx, &adminpb.DeleteServiceAccountKeyRequest{
+	err = newIAMClient.DeleteServiceAccountKey(ctx, &adminpb.DeleteServiceAccountKeyRequest{
 		Name: fmt.Sprintf("projects/%s/serviceAccounts/%s/keys/%s", c.ProjectId, c.ClientEmail, c.PrivateKeyId),
 	})
+	// If deletion of the old key fails, attempt to delete the new key to avoid leaving a dangling key, then return an error.
 	if err != nil {
-		return status.Errorf(codes.Internal, "error deleting service account key: %v", err)
+		// delete the new key using old client since the new client may not have permissions that the old client has.
+		rollbackErr := currentIAMClient.DeleteServiceAccountKey(ctx, &adminpb.DeleteServiceAccountKeyRequest{
+			Name: fmt.Sprintf("projects/%s/serviceAccounts/%s/keys/%s", newConfig.ProjectId, newConfig.ClientEmail, newConfig.PrivateKeyId),
+		})
+		// If rollback also fails, return an error indicating both the failure to delete the old key and the failure to roll back the new key.
+		if rollbackErr != nil {
+			return status.Errorf(codes.Internal, "error deleting service account key: %v; error rolling back newly created service account key: %v; service account may have multiple active keys", err, rollbackErr)
+		}
+
+		return status.Errorf(codes.Internal, "error deleting service account key: %v; successfully rolled back newly created service account key", err)
 	}
 
 	c.PrivateKey = newConfig.PrivateKey
