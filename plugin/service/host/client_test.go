@@ -11,7 +11,7 @@ import (
 
 	"cloud.google.com/go/compute/apiv1/computepb"
 	"github.com/hashicorp/boundary-plugin-gcp/internal/credential"
-	pb "github.com/hashicorp/boundary/sdk/pbs/plugin"
+	pb "github.com/hashicorp/boundary-sdk/sdk/pbs/plugin"
 	"github.com/stretchr/testify/require"
 )
 

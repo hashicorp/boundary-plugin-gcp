@@ -5,7 +5,7 @@ package plugin
 
 import (
 	"github.com/hashicorp/boundary-plugin-gcp/plugin/service/host"
-	pb "github.com/hashicorp/boundary/sdk/pbs/plugin"
+	pb "github.com/hashicorp/boundary-sdk/sdk/pbs/plugin"
 )
 
 // Ensure that HostPlugin implements the following services:

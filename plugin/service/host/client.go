@@ -9,7 +9,7 @@ import (
 	"strconv"
 
 	computepb "cloud.google.com/go/compute/apiv1/computepb"
-	pb "github.com/hashicorp/boundary/sdk/pbs/plugin"
+	pb "github.com/hashicorp/boundary-sdk/sdk/pbs/plugin"
 	"google.golang.org/api/iterator"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
