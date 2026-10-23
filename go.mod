@@ -1,6 +1,6 @@
 module github.com/hashicorp/boundary-plugin-gcp
 
-go 1.26.7
+go 1.26.10
 
 require (
 	cloud.google.com/go/iam v1.5.3
