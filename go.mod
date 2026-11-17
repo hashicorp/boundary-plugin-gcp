@@ -1,13 +1,13 @@
 module github.com/hashicorp/boundary-plugin-gcp
 
-go 1.26.10
+go 1.26.11
 
 require (
 	cloud.google.com/go/iam v1.5.3
 	cloud.google.com/go/resourcemanager v1.10.7
 	github.com/google/go-cmp v0.7.0
 	github.com/googleapis/gax-go/v2 v2.17.0
-	github.com/hashicorp/boundary-sdk/sdk v0.1.3
+	github.com/hashicorp/boundary-sdk/sdk v0.1.4
 	github.com/hashicorp/terraform-json v0.23.0
 	golang.org/x/oauth2 v0.36.0
 	google.golang.org/api v0.264.0
